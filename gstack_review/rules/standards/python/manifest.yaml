@@ -1,0 +1,12 @@
+id: python
+name: "Python 编码标准包"
+version: "0.1.0"
+builtin: true
+languages: [python]
+description: >-
+  Python 常见反模式与安全隐患的自动化检测子集。涵盖危险函数调用、异常处理、
+  可变默认参数、不安全的反序列化与命令执行等。当前以正则（regex）规则实现，
+  不依赖 tree-sitter（Python 的 AST/语义规则需另行接入）。
+reference: "https://docs.python.org/3/library/exceptions.html"
+coverage_note: >-
+  本包聚焦可静态自动化的高价值规则；依赖深层语义的规则可后续以 semantic 类型接入。

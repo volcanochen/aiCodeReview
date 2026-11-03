@@ -1,0 +1,5 @@
+# GStack local review — generated runtime data
+.gstack/
+__pycache__/
+*.pyc
+*.gstack_test.yaml

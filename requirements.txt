@@ -1,0 +1,12 @@
+# 核心运行仅需 Python 标准库 + PyYAML（用于配置与规则文件）。
+# tree-sitter 系列为可选：安装后可启用 ast_pattern 规则（AST 级精确匹配）。
+# 若未安装 tree-sitter，系统自动降级为 regex 兜底，仍能运行（ast_pattern 规则会被跳过）。
+PyYAML>=6.0
+
+# 可选（启用 AST 级规则，推荐）：
+# tree-sitter>=0.21
+# tree-sitter-c
+# tree-sitter-cpp
+
+# 本地模型：无需 Python 依赖，只需本机运行 Ollama / llama.cpp / vLLM 并暴露
+# OpenAI 兼容的 /v1/chat/completions 端点。

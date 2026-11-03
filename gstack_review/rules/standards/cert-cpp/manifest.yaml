@@ -1,0 +1,9 @@
+id: cert-cpp
+builtin: true
+languages: [cpp]
+name: "CERT C++ Rule Pack (scaffold)"
+version: "0.1.0"
+description: >-
+  CERT C++ 编码标准的小型示例包（脚手架）。演示多标准支持。可在此基础上扩展更多规则。
+reference: "https://wiki.sei.cmu.edu/confluence/display/cplusplus/SEI+CERT+C%2B%2B+Coding+Standard"
+coverage_note: "本包为脚手架，仅含少量代表性规则；完整覆盖需随标准持续补充。"

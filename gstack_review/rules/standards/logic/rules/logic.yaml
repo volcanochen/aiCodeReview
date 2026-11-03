@@ -1,0 +1,19 @@
+# 业务逻辑一致性规则（graph 类型，analyzer=logic_consistency）
+# 仅当启用 logic_only 或显式启用 logic 标准包、且本地模型在线时生效。
+- id: logic-consistency
+  name: "跨模块业务逻辑矛盾检测"
+  severity: medium
+  category: logic
+  type: graph
+  language: multi
+  enabled: true
+  match:
+    analyzer: logic_consistency
+    context:
+      max_pairs: 40          # 跨模块比对的最大对数（控制 LLM 调用量）
+      module_src_limit: 8000  # 每个模块送入模型的最大源码字符数
+  description: >-
+    整体推导各模块业务逻辑与不变量，再从调用图逐对回归，发现契约/不变量矛盾
+    （如 A 要求先初始化再调用但 B 未初始化即调用、错误码语义与处理冲突、状态机转移被违背等）。
+  fix_suggestion: >-
+    复核相关模块间的接口契约与调用顺序，消除矛盾的实现，或更新契约说明使其与实现一致。

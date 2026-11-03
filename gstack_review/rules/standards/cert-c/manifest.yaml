@@ -1,0 +1,12 @@
+id: cert-c
+builtin: true
+languages: [c]
+name: "CERT C Rule Pack (automated subset)"
+version: "0.1.0"
+description: >-
+  CERT C 编码标准的可自动化高价值子集。覆盖危险函数调用、非重入/信号处理安全、
+  格式化风险等。需要语义判断的规则标记为 semantic（需本地模型支持）。
+reference: "https://wiki.sei.cmu.edu/confluence/display/c/SEI+CERT+C+Coding+Standard"
+coverage_note: >-
+  CERT C 共 100+ 条规则，本包仅纳入可静态自动化的高价值子集；依赖运行行为或深层
+  语义的规则未纳入，或显式标注为 semantic 类型，需本地模型参与判定。

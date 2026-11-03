@@ -1,0 +1,11 @@
+id: javascript
+name: "JavaScript / TypeScript 编码标准包"
+version: "0.1.0"
+builtin: true
+languages: [javascript]
+description: >-
+  JavaScript（含 TypeScript）常见反模式与安全隐患的自动化检测子集。涵盖作用域、
+  相等比较、动态代码执行、XSS 风险等。当前以正则（regex）规则实现，适用于 .js/.jsx/.ts/.tsx。
+reference: "https://developer.mozilla.org/en-US/docs/Web/JavaScript"
+coverage_note: >-
+  本包聚焦可静态自动化的高价值规则；依赖深层语义的规则可后续以 semantic 类型接入。

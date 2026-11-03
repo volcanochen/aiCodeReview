@@ -1,0 +1,150 @@
+# JavaScript / TypeScript 编码标准包 — 规则定义（正则类型，适用于 .js/.jsx/.ts/.tsx）。
+- id: js-var
+  name: "避免使用 var"
+  severity: low
+  category: javascript
+  type: regex
+  language: javascript
+  description: "var 存在变量提升与函数作用域，易引发意料外的行为；应使用 let/const（块级作用域）。"
+  rationale: "ES6 起推荐 let/const 替代 var。"
+  fix_suggestion: "将 var 替换为 let（可变）或 const（常量）。"
+  enabled: true
+  match:
+    pattern: '\bvar\s+'
+    message: "使用了 var（函数作用域/提升），建议改用 let/const"
+    file_scope: {language: javascript, path_glob: "*.js"}
+
+- id: js-eqeq
+  name: "使用严格相等 === / !=="
+  severity: medium
+  category: javascript
+  type: regex
+  language: javascript
+  description: "== / != 会进行隐式类型转换，容易产生反直觉的结果（如 0 == '' 为 true）。"
+  rationale: "优先使用严格相等避免类型强制。"
+  fix_suggestion: "将 == 改为 ===，!= 改为 !==。"
+  enabled: true
+  match:
+    pattern: '(?<![=!])=(?!=)|(?<![=!])!(?!=)='
+    message: "使用了非严格相等（== / !=），建议改用 === / !== 避免类型强制"
+    file_scope: {language: javascript, path_glob: "*.js"}
+
+- id: js-eval
+  name: "避免使用 eval"
+  severity: high
+  category: javascript
+  type: regex
+  language: javascript
+  description: "eval 会执行字符串中的任意代码，若输入包含不可信数据则存在代码注入/XSS 风险。"
+  rationale: "动态执行字符串代码应尽量避免。"
+  fix_suggestion: "使用 JSON.parse 解析数据，或显式的对象/函数映射替代 eval。"
+  enabled: true
+  match:
+    pattern: '\beval\s*\('
+    message: "使用了 eval 执行动态代码，存在代码注入风险"
+    file_scope: {language: javascript, path_glob: "*.js"}
+
+- id: js-with
+  name: "避免使用 with 语句"
+  severity: medium
+  category: javascript
+  type: regex
+  language: javascript
+  description: "with 语句已被弃用，且其作用域解析在严格模式下报错、且难以静态分析。"
+  rationale: "with 会降低可读性与性能，并破坏优化。"
+  fix_suggestion: "用显式的对象引用替代 with 块。"
+  enabled: true
+  match:
+    pattern: '\bwith\s*\('
+    message: "使用了已弃用的 with 语句"
+    file_scope: {language: javascript, path_glob: "*.js"}
+
+- id: js-console-log
+  name: "清理调试输出"
+  severity: info
+  category: javascript
+  type: regex
+  language: javascript
+  description: "遗留的 console.log/debug 会污染浏览器/服务端日志。"
+  rationale: "生产环境应移除调试输出。"
+  fix_suggestion: "删除调试用 console.log，或统一替换为日志服务调用。"
+  enabled: true
+  match:
+    pattern: 'console\s*\.\s*(log|debug|info)\s*\('
+    message: "检测到 console.log/debug/info，请确认是否需要保留"
+    file_scope: {language: javascript, path_glob: "*.js"}
+
+- id: js-debugger
+  name: "移除 debugger 语句"
+  severity: low
+  category: javascript
+  type: regex
+  language: javascript
+  description: "debugger 语句在调试器打开时会中断执行，遗留于生产代码会造成意外停顿。"
+  rationale: "生产构建应剔除 debugger。"
+  fix_suggestion: "删除 debugger 语句（或仅在开发构建中保留）。"
+  enabled: true
+  match:
+    pattern: '\bdebugger\b'
+    message: "检测到 debugger 语句"
+    file_scope: {language: javascript, path_glob: "*.js"}
+
+- id: js-innerhtml-xss
+  name: "innerHTML 拼接用户输入存在 XSS 风险"
+  severity: high
+  category: javascript
+  type: regex
+  language: javascript
+  description: "innerHTML 直接拼接用户可控内容会引入跨站脚本（XSS）漏洞。"
+  rationale: "避免将不可信数据作为 HTML 插入 DOM。"
+  fix_suggestion: "使用 textContent 设置文本，或用 DOMPurify 等库对 HTML 做净化后再插入。"
+  enabled: true
+  match:
+    pattern: 'innerHTML\s*=[^;\n]*\+'
+    message: "innerHTML 拼接了内容（可能含用户可控数据），存在 XSS 风险"
+    file_scope: {language: javascript, path_glob: "*.js"}
+
+- id: js-document-write
+  name: "避免 document.write"
+  severity: medium
+  category: javascript
+  type: regex
+  language: javascript
+  description: "document.write 会阻塞解析、覆盖文档，并可能引入 XSS。"
+  rationale: "现代开发中应避免 document.write。"
+  fix_suggestion: "改用安全的 DOM 操作（如 appendChild / insertAdjacentHTML 配合净化）。"
+  enabled: true
+  match:
+    pattern: 'document\s*\.\s*write\s*\('
+    message: "使用了 document.write，存在性能与 XSS 风险"
+    file_scope: {language: javascript, path_glob: "*.js"}
+
+- id: js-settimeout-string
+  name: "避免 setTimeout/setInterval 传入字符串"
+  severity: high
+  category: javascript
+  type: regex
+  language: javascript
+  description: "setTimeout('code', ...) 会以类似 eval 的方式执行字符串，存在代码注入风险。"
+  rationale: "字符串形式的回调等价于 eval。"
+  fix_suggestion: "传入函数引用：setTimeout(() => {...}, ms)。"
+  enabled: true
+  match:
+    pattern: 'set(Timeout|Interval)\s*\(\s*["'']'
+    message: "setTimeout/setInterval 传入了字符串回调（等同 eval，存在注入风险）"
+    file_scope: {language: javascript, path_glob: "*.js"}
+
+- id: js-for-var
+  name: "for 循环避免使用 var"
+  severity: medium
+  category: javascript
+  type: regex
+  language: javascript
+  description: "for 循环中使用 var 声明计数器会因作用域提升导致闭包/异步中的经典 bug。"
+  rationale: "循环变量应使用块级作用域。"
+  fix_suggestion: "改用 for (let i ...) 或使用 for...of / forEach。"
+  enabled: true
+  match:
+    pattern: '\bfor\s*\([^)]*\bvar\b'
+    message: "for 循环中使用了 var，建议改用 let 以避免作用域问题"
+    file_scope: {language: javascript, path_glob: "*.js"}

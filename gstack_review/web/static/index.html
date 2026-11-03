@@ -1,0 +1,646 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>GStack 本地代码审查</title>
+<style>
+  :root{
+    --bg:#0d1117; --panel:#161b22; --panel2:#1c232c; --border:#30363d;
+    --text:#c9d1d9; --muted:#8b949e; --accent:#1f6feb; --accent2:#388bfd;
+    --ok:#2da44e; --fail:#d93025; --warn:#f5a623; --info:#8b8b8b;
+    --sev-critical:#d93025; --sev-high:#e8590c; --sev-medium:#f5a623; --sev-low:#1a7f37; --sev-info:#8b8b8b;
+    --mono:'SFMono-Regular',Consolas,'Liberation Mono',Menlo,monospace;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'PingFang SC','Microsoft YaHei',sans-serif;font-size:14px;line-height:1.5}
+  a{color:var(--accent2);text-decoration:none}
+  .topbar{display:flex;align-items:center;gap:18px;padding:12px 22px;background:var(--panel);border-bottom:1px solid var(--border);position:sticky;top:0;z-index:30}
+  .brand{font-weight:700;font-size:16px;letter-spacing:.5px}
+  .brand small{color:var(--muted);font-weight:400;margin-left:8px;font-size:12px}
+  .tabs{display:flex;gap:4px;margin-left:8px}
+  .tab{padding:7px 14px;border-radius:7px;cursor:pointer;color:var(--muted);border:1px solid transparent;user-select:none}
+  .tab:hover{background:var(--panel2);color:var(--text)}
+  .tab.active{background:var(--accent);color:#fff;border-color:var(--accent)}
+  .wrap{max-width:1180px;margin:0 auto;padding:22px}
+  .card{background:var(--panel);border:1px solid var(--border);border-radius:10px;padding:18px;margin-bottom:18px}
+  .card h2{margin:0 0 14px;font-size:15px;border-left:3px solid var(--accent);padding-left:10px}
+  .card h3{margin:18px 0 8px;font-size:13px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px}
+  label{display:block;margin:10px 0 4px;color:var(--muted);font-size:12px}
+  input[type=text],input[type=password],input[type=number],textarea,select{
+    width:100%;background:var(--bg);border:1px solid var(--border);color:var(--text);
+    border-radius:7px;padding:9px 11px;font-size:13px;font-family:inherit}
+  textarea{font-family:var(--mono);resize:vertical;min-height:64px}
+  input:focus,textarea:focus,select:focus{outline:none;border-color:var(--accent)}
+  .row{display:flex;gap:14px;flex-wrap:wrap}
+  .row>div{flex:1;min-width:240px}
+  .btn{background:var(--accent);color:#fff;border:none;border-radius:7px;padding:9px 16px;cursor:pointer;font-size:13px;font-weight:600}
+  .btn:hover{background:var(--accent2)}
+  .btn:disabled{opacity:.5;cursor:not-allowed}
+  .btn.ghost{background:transparent;border:1px solid var(--border);color:var(--text)}
+  .btn.ghost:hover{background:var(--panel2)}
+  .btn.danger{background:#3d1418;color:#ff9a9a;border:1px solid #5c1a1f}
+  .btn.sm{padding:5px 10px;font-size:12px;font-weight:500}
+  .muted{color:var(--muted)}
+  .inline{display:inline-flex;align-items:center;gap:8px}
+  .switch{position:relative;display:inline-block;width:42px;height:23px}
+  .switch input{display:none}
+  .slider{position:absolute;inset:0;background:#333a42;border-radius:23px;transition:.2s}
+  .slider:before{content:"";position:absolute;height:17px;width:17px;left:3px;top:3px;background:#ddd;border-radius:50%;transition:.2s}
+  .switch input:checked+.slider{background:var(--accent)}
+  .switch input:checked+.slider:before{transform:translateX(19px)}
+  .badge{display:inline-block;padding:2px 8px;border-radius:11px;font-size:11px;font-weight:600;border:1px solid var(--border)}
+  .badge.sev-critical{background:rgba(217,48,37,.18);color:#ff7b72;border-color:#5c1a1f}
+  .badge.sev-high{background:rgba(232,89,12,.18);color:#ffa07a;border-color:#5c3315}
+  .badge.sev-medium{background:rgba(245,166,35,.16);color:#f5c451;border-color:#5c4612}
+  .badge.sev-low{background:rgba(26,127,55,.18);color:#6fdc8c;border-color:#16431f}
+  .badge.sev-info{background:rgba(139,139,139,.16);color:#c9d1d9;border-color:#3a3f45}
+  .tag{display:inline-block;padding:1px 7px;border-radius:5px;font-size:11px;border:1px solid var(--border);color:var(--muted);margin-right:4px}
+  .tag.t-regex{color:#79c0ff;border-color:#1f4f7a}
+  .tag.t-ast_pattern{color:#d2a8ff;border-color:#5a3a7a}
+  .tag.t-graph{color:#ffd9a0;border-color:#7a5a1f}
+  .tag.t-semantic{color:#7ee787;border-color:#1f5a2f}
+  .src-builtin{color:#79c0ff}.src-user{color:#7ee787}
+  table{width:100%;border-collapse:collapse}
+  th,td{text-align:left;padding:9px 10px;border-bottom:1px solid var(--border);vertical-align:top}
+  th{color:var(--muted);font-size:12px;font-weight:600}
+  .find{display:flex;gap:10px;align-items:flex-start;cursor:pointer}
+  .find .main{flex:1}
+  .find code{font-family:var(--mono);background:var(--bg);padding:1px 5px;border-radius:4px;color:#ffa657}
+  pre{background:var(--bg);border:1px solid var(--border);border-radius:7px;padding:12px;overflow:auto;font-family:var(--mono);font-size:12.5px;white-space:pre}
+  .detail{display:none;margin-top:8px;padding-left:10px;border-left:2px solid var(--border)}
+  .find.open .detail{display:block}
+  .grid{display:grid;grid-template-columns:repeat(5,1fr);gap:12px}
+  .stat{background:var(--panel2);border:1px solid var(--border);border-radius:9px;padding:14px;text-align:center}
+  .stat .n{font-size:26px;font-weight:700;line-height:1.1}
+  .stat .l{font-size:12px;color:var(--muted);margin-top:3px}
+  .bar{height:12px;border-radius:6px;overflow:hidden;display:flex;background:#21262d;margin:10px 0}
+  .bar>span{height:100%}
+  .banner{border-radius:9px;padding:14px 16px;font-weight:600;margin-bottom:16px;display:flex;gap:10px;align-items:center}
+  .banner.pass{background:rgba(45,164,78,.16);border:1px solid #1f5a2f;color:#6fdc8c}
+  .banner.fail{background:rgba(217,48,37,.16);border:1px solid #5c1a1f;color:#ff7b72}
+  .banner.warn{background:rgba(245,166,35,.14);border:1px solid #5c4612;color:#f5c451}
+  .overlay{position:fixed;inset:0;background:rgba(13,17,23,.78);z-index:50;display:none;align-items:center;justify-content:center;flex-direction:column;gap:16px}
+  .overlay.show{display:flex}
+  .spinner{width:46px;height:46px;border:4px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin 1s linear infinite}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  .toast-wrap{position:fixed;top:14px;right:14px;z-index:60;display:flex;flex-direction:column;gap:8px}
+  .toast{padding:10px 16px;border-radius:8px;font-size:13px;box-shadow:0 4px 14px rgba(0,0,0,.4);animation:slidein .25s}
+  .toast.ok{background:#10331c;color:#6fdc8c;border:1px solid #1f5a2f}
+  .toast.err{background:#3d1418;color:#ff9a9a;border:1px solid #5c1a1f}
+  .toast.info{background:#10243d;color:#79c0ff;border:1px solid #1f4f7a}
+  @keyframes slidein{from{transform:translateX(40px);opacity:0}to{transform:none;opacity:1}}
+  .modal{position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:55;display:none;align-items:center;justify-content:center}
+  .modal.show{display:flex}
+  .modal .box{background:var(--panel);border:1px solid var(--border);border-radius:10px;width:560px;max-width:92vw;max-height:80vh;display:flex;flex-direction:column}
+  .modal .head{padding:14px 16px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center}
+  .modal .body{padding:0;overflow:auto}
+  .fs-item{display:flex;align-items:center;gap:8px;padding:9px 16px;cursor:pointer;border-bottom:1px solid #21262d}
+  .fs-item:hover{background:var(--panel2)}
+  .fs-item .ic{width:18px;text-align:center}
+  .crumbs{padding:10px 16px;color:var(--muted);font-family:var(--mono);font-size:12px;word-break:break-all}
+  .empty{padding:30px;text-align:center;color:var(--muted)}
+  .pill{font-size:11px;padding:1px 7px;border-radius:10px;border:1px solid var(--border);color:var(--muted)}
+  .right{text-align:right}.center{text-align:center}
+  .flex{display:flex;gap:10px;align-items:center}.between{justify-content:space-between}
+  .hint{font-size:12px;color:var(--muted);margin-top:4px}
+  .nowrap{white-space:nowrap}
+</style>
+</head>
+<body>
+<div class="topbar">
+  <div class="brand">GStack<small>本地 AI 代码审查</small></div>
+  <div class="tabs" id="tabs">
+    <div class="tab active" data-tab="dash">仪表盘</div>
+    <div class="tab" data-tab="config">配置</div>
+    <div class="tab" data-tab="standards">标准包</div>
+    <div class="tab" data-tab="rules">规则管理</div>
+    <div class="tab" data-tab="review">运行与结果</div>
+  </div>
+</div>
+
+<div class="wrap">
+  <!-- DASHBOARD -->
+  <section id="tab-dash">
+    <div class="card">
+      <h2>系统状态</h2>
+      <div class="grid" style="grid-template-columns:repeat(4,1fr)">
+        <div class="stat"><div class="n" id="d-model">…</div><div class="l">模型连通</div></div>
+        <div class="stat"><div class="n" id="d-standards">…</div><div class="l">启用标准包</div></div>
+        <div class="stat"><div class="n" id="d-rules">…</div><div class="l">已加载规则</div></div>
+        <div class="stat"><div class="n" id="d-result">—</div><div class="l">上次结果</div></div>
+      </div>
+      <div class="flex between" style="margin-top:16px">
+        <span class="muted" id="d-endpoint">端点：…</span>
+        <button class="btn" onclick="goReview()">运行审查 →</button>
+      </div>
+    </div>
+    <div class="card" id="d-lastcard" style="display:none">
+      <h2>上次审查摘要</h2>
+      <div id="d-last"></div>
+    </div>
+  </section>
+
+  <!-- CONFIG -->
+  <section id="tab-config" style="display:none">
+    <div class="card">
+      <h2>配置（.gstack.yaml）</h2>
+      <div class="row">
+        <div><label>模型端点 (OpenAI 兼容 /v1)</label><input type="text" id="c-endpoint"></div>
+        <div><label>模型 id</label><input type="text" id="c-model" list="c-models"><datalist id="c-models"></datalist></div>
+      </div>
+      <div class="row">
+        <div><label>API Key（本地服务通常忽略）</label><input type="password" id="c-api_key" placeholder="留空则保留已保存值"></div>
+        <div><label>解析语言</label>
+          <div class="inline" id="c-languages" style="margin-top:8px">
+            <label class="inline" style="margin:0"><input type="checkbox" value="c"> C</label>
+            <label class="inline" style="margin:0"><input type="checkbox" value="cpp"> C++</label>
+            <label class="inline" style="margin:0"><input type="checkbox" value="python"> Python</label>
+            <label class="inline" style="margin:0"><input type="checkbox" value="javascript"> JavaScript/TS</label>
+          </div>
+        </div>
+      </div>
+      <div class="row">
+        <div><label>扫描包含 (每行一个 glob)</label><textarea id="c-include"></textarea></div>
+        <div><label>扫描排除 (每行一个 glob)</label><textarea id="c-exclude"></textarea></div>
+      </div>
+      <label class="inline" style="margin-top:6px"><span class="switch"><input type="checkbox" id="c-only_structured"><span class="slider"></span></span> 仅结构化检查（跳过 LLM 语义规则，更快）</label>
+
+      <details style="margin-top:14px">
+        <summary style="cursor:pointer;color:var(--muted)">高级设置</summary>
+        <div class="row">
+          <div><label>用户规则目录</label><input type="text" id="c-user_rules_dir"></div>
+          <div><label>索引数据库路径</label><input type="text" id="c-index_db"></div>
+        </div>
+        <div class="row">
+          <div><label>语义规则超时 (ms)</label><input type="number" id="c-semantic_timeout_ms"></div>
+          <div><label>性能预算：最大文件数</label><input type="number" id="c-max_files"></div>
+          <div><label>性能预算：最大代码行</label><input type="number" id="c-max_loc"></div>
+        </div>
+      </details>
+
+      <div class="flex between" style="margin-top:18px">
+        <div class="flex">
+          <button class="btn" onclick="saveConfig()">保存配置</button>
+          <button class="btn ghost" onclick="testConnection()">测试连接</button>
+          <button class="btn ghost" onclick="initConfig()">生成示例配置</button>
+        </div>
+        <span id="c-conn" class="muted"></span>
+      </div>
+    </div>
+  </section>
+
+  <!-- STANDARDS -->
+  <section id="tab-standards" style="display:none">
+    <div class="card">
+      <h2>内置标准包</h2>
+      <p class="muted" style="margin-top:0">勾选以启用对应的内置检测标准（等价于配置中的 enabled_standards）。启用 Python / JavaScript 包时会自动把对应语言加入解析范围。</p>
+      <div id="standards-list"></div>
+    </div>
+    <div class="card" style="margin-top:18px">
+      <h3>安装新标准包</h3>
+      <p class="muted" style="margin-top:0">粘贴一个标准包定义（YAML）。顶层为映射，需包含 <code>id</code>、可选的 <code>manifest</code> 与 <code>rules</code>（规则列表，每条须符合 Rule 规范）。也可只填上方 id 并自行构造 rules。</p>
+      <div class="inline"><input id="inst-id" class="input" style="width:220px" placeholder="标准包 id（如 my-corp，仅字母/数字/_/./-）"></div>
+      <textarea id="inst-yaml" class="input" style="width:100%;height:150px;margin-top:8px;font-family:monospace" placeholder="id: my-corp&#10;manifest:&#10;  name: My Corp Rules&#10;rules:&#10;  - id: my-rule-1&#10;    name: ...&#10;    type: regex&#10;    language: python&#10;    match:&#10;      pattern: '...'&#10;      file_scope: {language: python, path_glob: '*.py'}"></textarea>
+      <div style="margin-top:8px">
+        <button class="btn" onclick="installStandard()">安装标准包</button>
+        <span id="inst-msg" class="muted" style="margin-left:10px"></span>
+      </div>
+    </div>
+  </section>
+
+  <!-- RULES -->
+  <section id="tab-rules" style="display:none">
+    <div class="card">
+      <h2>用自然语言新增规则</h2>
+      <textarea id="r-nl" placeholder="例如：禁止在信号处理函数里调用非异步信号安全函数"></textarea>
+      <div class="flex" style="margin-top:10px">
+        <button class="btn" onclick="compileRule()">编译为规则</button>
+        <span id="r-compile-msg" class="muted"></span>
+      </div>
+      <div id="r-compile-result" style="display:none;margin-top:14px">
+        <div id="r-review-banner"></div>
+        <label>规则 YAML 预览</label>
+        <pre id="r-yaml"></pre>
+        <label class="inline" id="r-confirm-wrap" style="display:none"><input type="checkbox" id="r-confirm"> 我已人工复核，确认保存</label>
+        <div class="flex" style="margin-top:8px">
+          <button class="btn" id="r-save" onclick="saveRule()">保存到用户规则</button>
+        </div>
+      </div>
+    </div>
+    <div class="card">
+      <h2>已加载规则</h2>
+      <div id="rules-list"></div>
+    </div>
+  </section>
+
+  <!-- REVIEW -->
+  <section id="tab-review" style="display:none">
+    <div class="card">
+      <h2>运行审查</h2>
+      <label>项目路径（本地目录）</label>
+      <div class="flex">
+        <input type="text" id="rv-path" style="flex:1">
+        <button class="btn ghost" onclick="openFs()">浏览…</button>
+        <span id="rv-path-stat" class="muted"></span>
+      </div>
+      <div class="row" style="margin-top:12px">
+        <div><label>输出格式（下载用）</label>
+          <select id="rv-format">
+            <option value="text">Text（友好文本）</option>
+            <option value="json">JSON</option>
+            <option value="sarif">SARIF</option>
+          </select>
+        </div>
+        <div><label>仅结构化（跳过语义规则）</label>
+          <div class="inline" style="margin-top:8px"><span class="switch"><input type="checkbox" id="rv-only"><span class="slider"></span></span></div>
+        </div>
+        <div><label>仅业务逻辑（跳过语法/正则规则）</label>
+          <div class="inline" style="margin-top:8px"><span class="switch"><input type="checkbox" id="rv-logic"><span class="slider"></span></span></div>
+        </div>
+      </div>
+      <label style="margin-top:10px">覆盖启用的标准包（默认使用配置）</label>
+      <div id="rv-standards" class="inline" style="flex-wrap:wrap"></div>
+      <div style="margin-top:16px"><button class="btn" id="rv-run" onclick="runReview()">运行审查</button></div>
+    </div>
+    <div id="rv-result"></div>
+  </section>
+</div>
+
+<!-- overlay -->
+<div class="overlay" id="overlay">
+  <div class="spinner"></div>
+  <div id="ov-msg" style="color:var(--text);font-size:14px"></div>
+  <div class="bar" style="width:320px;height:8px"><span id="ov-bar" style="width:0%;background:var(--accent)"></span></div>
+</div>
+
+<!-- fs modal -->
+<div class="modal" id="fs-modal">
+  <div class="box">
+    <div class="head"><b>选择目录</b><button class="btn ghost sm" onclick="closeFs()">关闭</button></div>
+    <div class="crumbs" id="fs-crumbs"></div>
+    <div class="body" id="fs-body"></div>
+    <div class="head" style="border-top:1px solid var(--border);border-bottom:none">
+      <span class="muted" id="fs-current"></span>
+      <button class="btn sm" onclick="pickFs()">选择此目录</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast-wrap" id="toasts"></div>
+
+<script>
+const API = (m,p,b)=>fetch(p,{method:m,headers:{'Content-Type':'application/json'},body:b?JSON.stringify(b):undefined}).then(r=>r.json().catch(()=>({error:'响应解析失败'})));
+function toast(msg,type='info'){const w=document.getElementById('toasts');const t=document.createElement('div');t.className='toast '+type;t.textContent=msg;w.appendChild(t);setTimeout(()=>{t.style.opacity='0';setTimeout(()=>t.remove(),300)},3000);}
+function el(id){return document.getElementById(id);}
+const state={config:null,standards:[],rules:[],models:[],lastResult:null};
+
+document.querySelectorAll('.tab').forEach(t=>t.onclick=()=>{
+  document.querySelectorAll('.tab').forEach(x=>x.classList.remove('active'));
+  t.classList.add('active');
+  document.querySelectorAll('section[id^=tab-]').forEach(s=>s.style.display='none');
+  el('tab-'+t.dataset.tab).style.display='block';
+});
+function goReview(){document.querySelector('.tab[data-tab=review]').click();}
+
+// ---------- load ----------
+async function init(){
+  const cfg=await API('GET','/api/config'); state.config=cfg;
+  const st=await API('GET','/api/standards'); state.standards=st;
+  const ru=await API('GET','/api/rules'); state.rules=ru;
+  const md=await API('GET','/api/models'); state.models=md.models||[];
+  fillConfig(cfg); renderStandards(); renderRules(); renderReviewStandards(); updateDashboard();
+}
+function fillConfig(c){
+  el('c-endpoint').value=c.endpoint||'';
+  el('c-model').value=c.model||'';
+  const dl=el('c-models'); dl.innerHTML=(state.models||[]).map(m=>`<option value="${m}">`).join('');
+  document.querySelectorAll('#c-languages input').forEach(cb=>cb.checked=(c.languages||[]).includes(cb.value));
+  el('c-include').value=(c.scope&&c.scope.include||[]).join('\n');
+  el('c-exclude').value=(c.scope&&c.scope.exclude||[]).join('\n');
+  el('c-only_structured').checked=!!c.only_structured;
+  el('c-user_rules_dir').value=c.user_rules_dir||'';
+  el('c-index_db').value=c.index_db||'';
+  el('c-semantic_timeout_ms').value=c.semantic_timeout_ms||'';
+  el('c-max_files').value=(c.perf_budget&&c.perf_budget.max_files)||'';
+  el('c-max_loc').value=(c.perf_budget&&c.perf_budget.max_loc)||'';
+}
+function readConfig(){
+  const include=el('c-include').value.split('\n').map(s=>s.trim()).filter(Boolean);
+  const exclude=el('c-exclude').value.split('\n').map(s=>s.trim()).filter(Boolean);
+  const langs=[...document.querySelectorAll('#c-languages input:checked')].map(cb=>cb.value);
+  const perf={};
+  if(el('c-max_files').value)perf.max_files=+el('c-max_files').value;
+  if(el('c-max_loc').value)perf.max_loc=+el('c-max_loc').value;
+  const c={
+    endpoint:el('c-endpoint').value,
+    model:el('c-model').value,
+    api_key:el('c-api_key').value,
+    languages:langs,
+    enabled_standards:state.config.enabled_standards||['cert-c'],
+    scope:{include,exclude},
+    only_structured:el('c-only_structured').checked,
+    user_rules_dir:el('c-user_rules_dir').value,
+    index_db:el('c-index_db').value,
+    semantic_timeout_ms:el('c-semantic_timeout_ms').value?+el('c-semantic_timeout_ms').value:30000,
+  };
+  if(Object.keys(perf).length) c.perf_budget=perf;
+  return c;
+}
+async function saveConfig(){
+  const c=readConfig();
+  const r=await API('PUT','/api/config',c);
+  if(r.ok){state.config=r.config;toast('配置已保存','ok');fillConfig(r.config);renderStandards();renderRules();updateDashboard();}
+  else toast('保存失败：'+(r.error||''),'err');
+}
+async function testConnection(){
+  const c=readConfig();
+  el('c-conn').textContent='检测中…';
+  const r=await API('POST','/api/config/test',{endpoint:c.endpoint,model:c.model,api_key:c.api_key});
+  if(r.ok){el('c-conn').innerHTML='✅ 可达，'+r.models.length+' 个模型';toast('端点可达','ok');}
+  else{el('c-conn').innerHTML='❌ '+r.error;toast('端点不可达：'+r.error,'err');}
+}
+async function initConfig(){
+  const r=await API('POST','/api/config/init');
+  if(r.ok){toast('已生成示例配置','ok');init();}else toast('生成失败','err');
+}
+
+// ---------- dashboard ----------
+function updateDashboard(){
+  const md=state.models||[];
+  el('d-model').textContent=(md.length?md.length+' 个':'离线');
+  el('d-model').style.color=md.length?'var(--ok)':'var(--fail)';
+  el('d-standards').textContent=(state.config.enabled_standards||[]).length;
+  el('d-rules').textContent=state.rules.length;
+  el('d-endpoint').textContent='端点：'+(state.config.endpoint||'');
+  const lr=state.lastResult;
+  if(lr){el('d-result').textContent=lr.gate.passed?'通过':'失败';el('d-result').style.color=lr.gate.passed?'var(--ok)':'var(--fail)';el('d-lastcard').style.display='block';renderLast();}
+  else{el('d-result').textContent='—';el('d-result').style.color='var(--muted)';}
+}
+function renderLast(){
+  const lr=state.lastResult;const s=lr.report.summary;
+  el('d-last').innerHTML=`<div class="banner ${lr.gate.passed?'pass':'fail'}">${lr.gate.passed?'✓ 门禁通过（无 critical/high）':'✗ 门禁失败：'+lr.gate.fail_severities.join(', ')+' 问题'}</div>`+
+    `<div class="grid"><div class="stat"><div class="n">${s.total_findings}</div><div class="l">问题总数</div></div>`+
+    `<div class="stat"><div class="n">${s.total_rules}</div><div class="l">规则总数</div></div>`+
+    `<div class="stat"><div class="n" style="color:var(--sev-critical)">${s.findings_by_severity.critical}</div><div class="l">critical</div></div>`+
+    `<div class="stat"><div class="n" style="color:var(--sev-high)">${s.findings_by_severity.high}</div><div class="l">high</div></div>`+
+    `<div class="stat"><div class="n" style="color:var(--sev-medium)">${s.findings_by_severity.medium}</div><div class="l">medium</div></div></div>`;
+}
+
+// ---------- standards ----------
+function renderStandards(){
+  const box=el('standards-list');
+  if(!state.standards.length){box.innerHTML='<div class="empty">未检测到内置标准包（检查 rules/standards 目录）</div>';return;}
+  const enabled=state.config.enabled_standards||[];
+  box.innerHTML=state.standards.map(p=>{
+    const on=enabled.includes(p.id);
+    const uninstall = p.builtin ? '' : `<button class="btn danger sm" style="margin-left:10px" onclick="uninstallStandard('${p.id}')">卸载</button>`;
+    const langs=(p.languages||[]).join('/');
+    return `<div class="flex between" style="padding:12px 0;border-bottom:1px solid var(--border)">
+      <div style="max-width:72%"><b>${p.name||p.id}</b> <span class="pill">${p.version||'?'}</span>${langs?` <span class="pill">${langs}</span>`:''}${p.builtin?' <span class="pill">内置</span>':''}<div class="muted" style="font-size:12px">${p.coverage_note||''}</div></div>
+      <div class="flex" style="align-items:center">
+        <label class="switch"><input type="checkbox" onchange="toggleStandard('${p.id}',this.checked)" ${on?'checked':''}><span class="slider"></span></label>
+        ${uninstall}
+      </div>
+    </div>`;
+  }).join('');
+}
+async function toggleStandard(id,on){
+  const cur=state.config.enabled_standards||[];
+  const next=on?[...new Set([...cur,id])]:cur.filter(x=>x!==id);
+  const c=readConfig();
+  if(on){
+    // auto-add the pack's languages so its files actually get indexed
+    const pk=state.standards.find(p=>p.id===id);
+    const langs=(pk&&pk.languages)||[];
+    const set=new Set(c.languages||[]); langs.forEach(l=>set.add(l)); c.languages=[...set];
+  }
+  const r=await API('PUT','/api/config',Object.assign(c,{enabled_standards:next}));
+  if(r.ok){state.config=r.config;renderStandards();updateDashboard();toast('已'+(on?'启用':'停用')+' '+id,'ok');}
+  else toast('操作失败：'+(r.error||''),'err');
+}
+async function installStandard(){
+  const id=el('inst-id').value.trim();
+  const yml=el('inst-yaml').value;
+  if(!id && !yml.trim()){el('inst-msg').textContent='请填写 id 或粘贴 YAML';return;}
+  const body = yml.trim() ? {id, yaml:yml} : {id};
+  el('inst-msg').textContent='安装中…';
+  const r=await API('POST','/api/standards/install',body);
+  if(r.ok){el('inst-msg').textContent='已安装 '+r.id+'（'+r.rule_count+' 条规则）';toast('安装成功','ok');await init();}
+  else{el('inst-msg').textContent=r.error||'安装失败';toast('安装失败：'+(r.error||''),'err');}
+}
+async function uninstallStandard(id){
+  if(!confirm('确定卸载标准包 '+id+'？其规则文件将被删除（内置包不可卸载）。'))return;
+  const r=await API('DELETE','/api/standards/'+id);
+  if(r.ok){toast('已卸载 '+id,'ok');await init();}
+  else toast('卸载失败：'+(r.error||''),'err');
+}
+
+// ---------- rules ----------
+function renderRules(){
+  const box=el('rules-list');
+  if(!state.rules.length){box.innerHTML='<div class="empty">暂无启用规则，请在「标准包」启用内置包或用上方自然语言新增</div>';return;}
+  const groups={};
+  state.rules.forEach(r=>{(groups[r.category]=groups[r.category]||[]).push(r);});
+  let html='';
+  for(const cat in groups){
+    const items=groups[cat];
+    html+=`<h3>${cat}（${items.length}）</h3><table><thead><tr><th>严重度</th><th>名称 / id</th><th>类型</th><th>来源</th><th>状态</th><th></th></tr></thead><tbody>`;
+    items.forEach(r=>{
+      const isUser=r.source==='user';
+      html+=`<tr>
+        <td><span class="badge sev-${r.severity}">${r.severity}</span></td>
+        <td><b>${r.name}</b><br><code style="font-size:11px">${r.id}</code></td>
+        <td><span class="tag t-${r.type}">${r.type}</span></td>
+        <td class="src-${isUser?'user':'builtin'}">${isUser?'user':'builtin'}</td>
+        <td>${r.enabled?'<span class="tag">启用</span>':'<span class="tag" style="color:var(--muted)">停用</span>'}</td>
+        <td class="right nowrap">${isUser?`<button class="btn ghost sm" onclick="toggleRule('${r.id}',${!r.enabled})">${r.enabled?'停用':'启用'}</button> <button class="btn danger sm" onclick="delRule('${r.id}')">删除</button>`:'<span class="muted" title="内置规则不可删除/切换，请改用标准包开关">🔒</span>'}</td>
+      </tr>`;
+    });
+    html+='</tbody></table>';
+  }
+  box.innerHTML=html;
+}
+async function toggleRule(id,on){
+  const r=await API('PATCH',`/api/rules/${id}/enabled`,{enabled:on});
+  if(r.ok){toast('已'+(on?'启用':'停用')+' '+id,'ok');init();}else toast('操作失败：'+(r.error||''),'err');
+}
+async function delRule(id){
+  if(!confirm('确认删除用户规则 '+id+'？'))return;
+  const r=await API('DELETE',`/api/rules/${id}`);
+  if(r.ok){toast('已删除','ok');init();}else toast('删除失败：'+(r.error||''),'err');
+}
+async function compileRule(){
+  const text=el('r-nl').value.trim();
+  if(!text){toast('请输入规则描述','err');return;}
+  el('r-compile-msg').textContent='编译中…';
+  const r=await API('POST','/api/rules/compile',{text});
+  el('r-compile-msg').textContent='';
+  el('r-compile-result').style.display='block';
+  if(!r.ok && !r.template){el('r-review-banner').innerHTML=`<div class="banner warn">${r.error||'编译失败'}</div>`;el('r-yaml').textContent='';el('r-save').disabled=true;return;}
+  el('r-yaml').textContent=r.yaml_preview||r.template||'';
+  const confWrap=el('r-confirm-wrap');const saveBtn=el('r-save');
+  if(r.needs_review){
+    el('r-review-banner').innerHTML=`<div class="banner warn">⚠️ 模型置信度 ${(r.confidence||0).toFixed(2)} 偏低，请人工复核后再启用</div>`;
+    confWrap.style.display='inline-flex';saveBtn.disabled=true;
+    el('r-confirm').onchange=e=>{saveBtn.disabled=!e.target.checked;};
+  }else{
+    el('r-review-banner').innerHTML=r.ok?'<div class="banner pass">✓ 规则编译成功</div>':'<div class="banner warn">本地模型不可达，已生成可编辑模板（将以停用状态保存）</div>';
+    confWrap.style.display='none';saveBtn.disabled=false;
+  }
+  state._compiled={rule:r.rule,template:r.template,template_rule:r.template_rule,ok:r.ok};
+}
+async function saveRule(){
+  const c=state._compiled;if(!c)return;
+  let payload=c.rule;
+  if(!c.ok && c.template_rule){ // offline template fallback (parsed by backend)
+    payload=c.template_rule; payload.enabled=false;
+  }
+  const r=await API('POST','/api/rules',payload);
+  if(r.ok){toast('规则已保存','ok');el('r-nl').value='';el('r-compile-result').style.display='none';init();}
+  else toast('保存失败：'+(r.error||''),'err');
+}
+
+// ---------- review ----------
+function renderReviewStandards(){
+  const box=el('rv-standards');
+  const enabled=state.config.enabled_standards||[];
+  box.innerHTML=state.standards.map(p=>`<label class="inline" style="margin:0 12px 6px 0"><input type="checkbox" value="${p.id}" ${enabled.includes(p.id)?'checked':''}> ${p.name||p.id}</label>`).join('');
+}
+async function runReview(){
+  let path=el('rv-path').value.trim();
+  if(!path){toast('请输入项目路径','err');return;}
+  const st=await API('GET','/api/fs/stat?path='+encodeURIComponent(path));
+  if(!st.exists){toast('路径不存在：'+path,'err');return;}
+  if(!st.is_dir){toast('请选择目录而非文件','err');return;}
+  const standards=[...document.querySelectorAll('#rv-standards input:checked')].map(cb=>cb.value);
+  const body={path,standards,only_structured:el('rv-only').checked,logic_only:el('rv-logic').checked,format:el('rv-format').value};
+  el('rv-run').disabled=true;
+  const r=await API('POST','/api/review',body);
+  if(!r.ok){toast('启动失败：'+(r.error||''),'err');el('rv-run').disabled=false;return;}
+  state.jobId=r.job_id;
+  pollJob(r.job_id);
+}
+let pollTimer=null;
+function pollJob(jobId){
+  el('overlay').classList.add('show');
+  const tick=async()=>{
+    const r=await API('GET','/api/review/'+jobId);
+    const p=r.progress||{};
+    el('ov-msg').textContent=p.message||'处理中…';
+    const pct= p.total? Math.round((p.current||0)/p.total*100): (p.indeterminate?null:0);
+    el('ov-bar').style.width=(pct===null?'100%':pct+'%');
+    if(r.status==='done'){el('overlay').classList.remove('show');el('rv-run').disabled=false;clearInterval(pollTimer);renderResult(r.result);state.lastResult=r.result;updateDashboard();}
+    else if(r.status==='error'){el('overlay').classList.remove('show');el('rv-run').disabled=false;clearInterval(pollTimer);toast('审查出错','err');el('rv-result').innerHTML=`<div class="banner fail">运行出错：${r.error||''}</div>`;}
+  };
+  tick();pollTimer=setInterval(tick,1200);
+}
+function renderResult(res){
+  const rep=res.report;const s=rep.summary;const gate=res.gate;
+  const fb=s.findings_by_severity;
+  const bar=`<div class="bar">${['critical','high','medium','low','info'].map(k=>fb[k]?`<span style="width:${fb[k]/s.total_findings*100}%;background:var(--sev-${k})"></span>`:'').join('')}</div>`;
+  let html=`<div class="card"><div class="banner ${gate.passed?'pass':'fail'}">${gate.passed?'✓ 门禁通过（无 critical/high）':'✗ 门禁失败：'+gate.fail_severities.join(', ')+' 问题'}</div>`;
+  html+=`<div class="grid"><div class="stat"><div class="n">${s.total_findings}</div><div class="l">问题总数</div></div>`+
+    `<div class="stat"><div class="n">${s.total_rules}</div><div class="l">规则总数</div></div>`+
+    `<div class="stat"><div class="n">${rep.metadata.scope_files}</div><div class="l">文件</div></div>`+
+    `<div class="stat"><div class="n">${rep.metadata.scope_loc}</div><div class="l">代码行</div></div>`+
+    `<div class="stat"><div class="n">${rep.metadata.model}</div><div class="l">模型</div></div></div>`;
+  html+=`<div class="grid" style="margin-top:12px">`+
+    ['critical','high','medium','low','info'].map(k=>`<div class="stat"><div class="n" style="color:var(--sev-${k})">${fb[k]}</div><div class="l">${k}</div></div>`).join('')+`</div>${bar}`;
+  if(rep.skipped&&rep.skipped.length){
+    // Only a genuine model outage (kind === "model_offline") warrants the scary
+    // "本地模型不可达" banner. Other skips are ordinary rule errors and must NOT
+    // be mislabeled as a model problem (the old regex matched e.g. "tree-sitter 不可用").
+    const offline=rep.skipped.some(x=>x.kind==='model_offline');
+    const msg = offline
+      ? `⚠️ 跳过 ${rep.skipped.length} 条规则：本地模型不可达，语义规则已跳过，结果不完整——建议启动本地推理服务后重试。 <button class="btn sm" onclick="rerunStructured()">仅结构化重跑</button>`
+      : `⚠️ 跳过 ${rep.skipped.length} 条规则（规则执行出错，非模型问题）：`;
+    html+=`<div class="banner warn">${msg}<ul style="margin:6px 0 0;padding-left:18px">`+rep.skipped.map(x=>`<li><code>${x.rule_id}</code> — ${x.reason}</li>`).join('')+`</ul></div>`;
+  }
+  html+=`<div class="flex between" style="margin-top:14px"><h3 style="margin:0">发现的问题（${s.total_findings}）</h3>
+    <div class="flex"><button class="btn ghost sm" onclick="copyJson()">复制 JSON</button>
+    <button class="btn ghost sm" onclick="dl('json')">JSON</button>
+    <button class="btn ghost sm" onclick="dl('sarif')">SARIF</button>
+    <button class="btn ghost sm" onclick="dl('text')">Text</button></div></div>`;
+  if(!rep.findings.length)html+='<div class="empty" style="color:var(--ok)">🎉 在启用规则下未发现任何问题</div>';
+  else{
+    html+='<div id="findings">';
+    // grouped by severity
+    ['critical','high','medium','low','info'].forEach(sev=>{
+      const fs=rep.findings.filter(f=>f.severity===sev);if(!fs.length)return;
+      html+=`<div style="margin-top:10px"><div class="flex between" style="cursor:pointer" onclick="this.nextElementSibling.style.display=this.nextElementSibling.style.display==='none'?'block':'none'"><b><span class="badge sev-${sev}">${sev}</span> ${fs.length} 条</b><span class="muted">点击展开/收起</span></div><div style="display:none">`+
+        fs.map(f=>findRow(f)).join('')+`</div></div>`;
+    });
+    html+='</div>';
+  }
+  html+='</div>';
+  el('rv-result').innerHTML=html;
+}
+function findRow(f){
+  return `<div class="find" onclick="this.classList.toggle('open')" style="padding:10px 0;border-bottom:1px solid var(--border)">
+    <div class="main"><div class="flex between"><b>${f.rule_name}</b><span class="badge sev-${f.severity}">${f.severity}</span></div>
+    <div class="muted" style="font-size:12px"><code>${f.file}:${f.line}:${f.column}</code> · ${f.rule_id}</div>
+    <div style="margin-top:4px">${f.message}</div>
+    <div class="detail">
+      ${f.snippet?`<label>代码片段</label><pre>${escapeHtml(f.snippet)}</pre>`:''}
+      ${f.suggestion?`<label>修复建议</label><div>${f.suggestion}</div>`:''}
+      <div class="muted" style="font-size:12px;margin-top:6px">位置：${f.file}:${f.line}:${f.column}–${f.end_line}:${f.end_column} ${f.confidence!=null?`· 置信度 ${f.confidence}`:''}</div>
+    </div></div></div>`;
+}
+function escapeHtml(s){return (s||'').replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));}
+function dl(fmt){if(!state.jobId){toast('尚无可下载报告','err');return;}location.href=`/api/review/${state.jobId}/download?fmt=${fmt}`;}
+function copyJson(){navigator.clipboard.writeText(JSON.stringify(state.lastResult.report,null,2)).then(()=>toast('已复制 JSON','ok'));}
+async function rerunStructured(){el('rv-only').checked=true;runReview();}
+
+// ---------- fs modal ----------
+let fsCurrent=null;
+async function openFs(){
+  fsCurrent=(el('rv-path').value.trim())||(state.config&&state.config.root)||null;
+  el('fs-modal').classList.add('show');
+  await fsNav(fsCurrent);
+}
+async function fsNav(path){
+  if(path===null||path===undefined){
+    path=(state.config&&state.config.root)||'/';
+  }
+  const r=await API('GET','/api/fs/list?path='+encodeURIComponent(path));
+  fsCurrent=r.path;
+  el('fs-crumbs').textContent=r.path;
+  el('fs-current').textContent='当前：'+r.path;
+  const body=el('fs-body');
+  body.innerHTML='';
+  if(r.parent){
+    const up=document.createElement('div');
+    up.className='fs-item';
+    up.innerHTML='<span class="ic">⬆️</span> .. (上级)';
+    up.onclick=()=>fsNav(r.parent);
+    body.appendChild(up);
+  }
+  if(!r.children.length){
+    const e=document.createElement('div');
+    e.className='empty';
+    e.textContent='空目录或无权限';
+    body.appendChild(e);
+  }
+  r.children.forEach(c=>{
+    const d=document.createElement('div');
+    d.className='fs-item';
+    d.innerHTML=`<span class="ic">${c.is_dir?'📁':'📄'}</span> ${escapeHtml(c.name)}`;
+    if(c.is_dir) d.onclick=()=>fsNav(c.path);
+    body.appendChild(d);
+  });
+}
+function pickFs(){el('rv-path').value=fsCurrent;closeFs();}
+function closeFs(){el('fs-modal').classList.remove('show');}
+
+init();
+// keep model connectivity + dashboard fresh
+setInterval(async()=>{
+  try{
+    const md=await API('GET','/api/models');
+    if(state.models.join()!==(md.models||[]).join()){state.models=md.models||[];updateDashboard();}
+  }catch(e){}
+},20000);
+</script>
+</body>
+</html>

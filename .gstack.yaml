@@ -1,0 +1,31 @@
+user_rules_dir: .gstack/rules
+model: qwen/qwen2.5-coder-14b
+enabled_standards:
+- cert-c
+- javascript
+- python
+- logic
+only_structured: false
+index_db: .gstack/index.db
+semantic_timeout_ms: 30000
+languages:
+- c
+- cpp
+- python
+- javascript
+- multi
+perf_budget:
+  max_files: 200000
+  max_loc: 200000000
+api_key: xx
+endpoint: http://localhost:1234/v1
+scope:
+  include:
+  - '**/*.c'
+  - '**/*.cpp'
+  - '**/*.h'
+  - '**/*.hpp'
+  - '**/*.js'
+  - '**/*.py'
+  - '**/*.ts'
+  exclude: []

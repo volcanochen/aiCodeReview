@@ -1,0 +1,167 @@
+# Python 编码标准包 — 规则定义（正则类型，适用于 .py）。
+# 每条规则映射到一个常见 Python 反模式 / 安全隐患。
+- id: py-bare-except
+  name: "避免裸 except"
+  severity: medium
+  category: python
+  type: regex
+  language: python
+  description: "裸 except: 会捕获包括 KeyboardInterrupt/SystemExit 在内的所有异常，掩盖真实错误。"
+  rationale: "PEP 8: 永远不要使用裸 'except:'。"
+  fix_suggestion: "捕获具体的异常类型，如 except ValueError:，或在末尾保留 except Exception 并记录日志。"
+  enabled: true
+  match:
+    pattern: 'except\s*:'
+    message: "使用了裸 except:（捕获所有异常，包括 KeyboardInterrupt/SystemExit）"
+    file_scope: {language: python, path_glob: "*.py"}
+  references: ["https://peps.python.org/pep-0008/#programming-recommendations"]
+
+- id: py-broad-except
+  name: "避免捕获过于宽泛的 Exception"
+  severity: medium
+  category: python
+  type: regex
+  language: python
+  description: "except Exception / BaseException 会吞掉几乎所有错误，降低可观测性。"
+  rationale: "尽量只捕获预期会发生的异常类型。"
+  fix_suggestion: "仅捕获需要处理的特定异常，其余向上抛出或显式记录。"
+  enabled: true
+  match:
+    pattern: 'except\s+(BaseException|Exception)\s*:'
+    message: "捕获了过于宽泛的 {{0}}，建议细化异常类型"
+    file_scope: {language: python, path_glob: "*.py"}
+
+- id: py-mutable-default
+  name: "避免使用可变默认参数"
+  severity: medium
+  category: python
+  type: regex
+  language: python
+  description: "函数默认参数在定义时求值一次，可变对象（list/dict）会在多次调用间共享状态。"
+  rationale: "Python 默认参数绑定在 def 时而非调用时。"
+  fix_suggestion: "将默认值设为 None，在函数体内初始化：def f(x=None): x = x or []。"
+  enabled: true
+  match:
+    pattern: 'def\s+[A-Za-z_]\w*\s*\([^)]*=\s*(\[\]|\{\})'
+    message: "检测到可变默认参数（list/dict），多次调用会共享同一对象"
+    file_scope: {language: python, path_glob: "*.py"}
+
+- id: py-eval-exec
+  name: "避免 eval / exec"
+  severity: high
+  category: python
+  type: regex
+  language: python
+  description: "eval/exec 会执行动态构造的代码，若输入包含不可信数据则存在代码注入风险。"
+  rationale: "动态执行字符串代码应尽量避免。"
+  fix_suggestion: "使用 ast.literal_eval 处理数据，或改用显式的解析/调度逻辑，杜绝执行任意代码。"
+  enabled: true
+  match:
+    pattern: '\b(eval|exec)\s*\('
+    message: "使用了 eval/exec 执行动态代码，存在代码注入风险"
+    file_scope: {language: python, path_glob: "*.py"}
+
+- id: py-identity-bool
+  name: "避免与 True/False 做等值/身份比较"
+  severity: low
+  category: python
+  type: regex
+  language: python
+  description: "x == True / x is True 应直接用布尔上下文 if x: 表达。"
+  rationale: "显式比较布尔量既冗余又易错（例如 1 == True 为 True）。"
+  fix_suggestion: "直接用 if x: 判断真假，或与具体值比较时用 x is True 仅当需要区分布尔与非布尔。"
+  enabled: true
+  match:
+    pattern: '\b(is|==)\s+(True|False)\b'
+    message: "与 True/False 做比较（{{0}} {{1}}），建议直接用布尔上下文"
+    file_scope: {language: python, path_glob: "*.py"}
+
+- id: py-wildcard-import
+  name: "避免通配符导入"
+  severity: low
+  category: python
+  type: regex
+  language: python
+  description: "from module import * 会污染命名空间，降低可读性与静态分析能力。"
+  rationale: "PEP 8 不推荐通配符导入。"
+  fix_suggestion: "显式列出需要导入的名称：from module import a, b。"
+  enabled: true
+  match:
+    pattern: 'from\s+[A-Za-z_.]+\s+import\s+\*'
+    message: "使用了通配符导入（import *），污染命名空间"
+    file_scope: {language: python, path_glob: "*.py"}
+
+- id: py-assert-use
+  name: "生产代码慎用 assert"
+  severity: info
+  category: python
+  type: regex
+  language: python
+  description: "assert 在 Python 以 -O 优化运行时会被移除，不能用于输入校验等关键逻辑。"
+  rationale: "assert 仅为开发期契约检查。"
+  fix_suggestion: "对不可省略的校验改用显式 if + raise，而非 assert。"
+  enabled: true
+  match:
+    pattern: '^\s*assert\s'
+    message: "使用了 assert；生产环境（python -O）会跳过，请勿用于关键校验"
+    file_scope: {language: python, path_glob: "*.py"}
+
+- id: py-command-injection
+  name: "避免命令注入"
+  severity: high
+  category: python
+  type: regex
+  language: python
+  description: "os.system 或使用 shell=True 的 subprocess 调用，若命令拼接不可信输入则存在命令注入。"
+  rationale: "避免以 shell 解释器执行拼接命令。"
+  fix_suggestion: "使用 subprocess.run([cmd, arg, ...], shell=False)，不要拼接命令字符串，必要时白名单校验参数。"
+  enabled: true
+  match:
+    pattern: '(os\.system|subprocess\.[A-Za-z_]+\([^)]*shell\s*=\s*True)'
+    message: "存在命令执行且可能启用 shell（命令注入风险）"
+    file_scope: {language: python, path_glob: "*.py"}
+
+- id: py-ssl-verify-false
+  name: "避免禁用 TLS 证书校验"
+  severity: high
+  category: python
+  type: regex
+  language: python
+  description: "verify=False 会关闭 TLS 证书校验，使 HTTPS 请求面临中间人攻击。"
+  rationale: "传输安全不应被关闭。"
+  fix_suggestion: "移除 verify=False，或为内部 CA 配置可信证书；仅测试环境才允许关闭。"
+  enabled: true
+  match:
+    pattern: 'verify\s*=\s*False'
+    message: "禁用了 TLS 证书校验（verify=False），存在中间人攻击风险"
+    file_scope: {language: python, path_glob: "*.py"}
+
+- id: py-insecure-deserialization
+  name: "避免反序列化不可信数据"
+  severity: medium
+  category: python
+  type: regex
+  language: python
+  description: "pickle/marshal.loads 会执行被序列化对象中的任意代码，反序列化不可信数据极其危险。"
+  rationale: "永远不要 unpickle 来自网络/文件的不可信数据。"
+  fix_suggestion: "改用 JSON 等安全格式；若必须用 pickle，确保数据来源可信并做签名校验。"
+  enabled: true
+  match:
+    pattern: '\b(pickle|marshal|cPickle)\.loads?\s*\('
+    message: "使用了 pickle/marshal.loads 反序列化，若数据不可信则存在任意代码执行风险"
+    file_scope: {language: python, path_glob: "*.py"}
+
+- id: py-debug-print
+  name: "清理调试输出"
+  severity: info
+  category: python
+  type: regex
+  language: python
+  description: "遗留的 print() 调试输出会污染日志与 stdout。"
+  rationale: "生产代码应使用 logging 而非 print。"
+  fix_suggestion: "替换为 logging 模块，或删除调试用 print。"
+  enabled: true
+  match:
+    pattern: '\bprint\s*\('
+    message: "检测到 print() 调用，请确认是否需要保留（建议改用 logging）"
+    file_scope: {language: python, path_glob: "*.py"}

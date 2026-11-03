@@ -1,0 +1,12 @@
+id: logic
+name: "业务逻辑一致性（跨模块）"
+version: "0.1.0"
+builtin: true
+languages: [multi]
+description: >-
+  基于本地大模型，先整体推导各模块的业务逻辑与契约（不变量/前置后置/错误处理/状态机），
+  再从调用图逐对回归，检测跨模块以及模块内部的业务逻辑矛盾。仅 logic_only 模式或显式启用时生效，
+  且需要本地模型在线（离线时以 model_offline 跳过）。
+reference: "https://en.wikipedia.org/wiki/Code_review"
+coverage_note: >-
+  依赖本地 LLM 做语义判定；跨模块调用图对 C/C++ 由 tree-sitter 构建，对 Python/JavaScript 由正则回退抽取（已归属调用到所在函数）。
