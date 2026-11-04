@@ -29,8 +29,9 @@ from ..config import load_config, example_config_text
 from ..llm import LLMClient
 from ..parser.index import Index
 from ..rules import (
-    load_pack_by_id, load_user_rules_dir as _lur, validate_rule,
-    RuleValidationError, list_packs,
+    load_pack_by_id, load_standard_pack, load_user_rules_dir as _lur, validate_rule,
+    RuleValidationError, list_packs, rule_subsets, rule_matches_subset,
+    parse_subset_specs,
 )
 from ..rules.nl_compiler import compile_nl
 from ..rules.engine import RuleEngine, ModelUnavailable
@@ -43,12 +44,25 @@ STATIC_DIR = os.path.join(os.path.dirname(__file__), "static")
 CONFIG_FIELDS = {
     "endpoint", "model", "api_key", "languages", "enabled_standards",
     "scope", "perf_budget", "user_rules_dir", "index_db",
-    "semantic_timeout_ms", "only_structured", "logic_only",
+    "semantic_timeout_ms", "only_structured", "logic_only", "enabled_subsets",
 }
 
 
 def _resolve(base: str, p: str) -> str:
     return p if os.path.isabs(p) else os.path.join(base, p)
+
+
+def _merge_subsets(cfg, overrides: dict | None) -> dict:
+    """本次运行的子集选择 = 配置值 + 本次覆盖（按包覆盖，未提到的包沿用配置）。
+
+    `overrides` 里出现某个包 → 以它为准（可以是空列表 = 该包一条规则都不跑）；
+    没出现的包保持配置里的 `enabled_subsets`，配置里也没有则交给
+    `filter_by_subsets` 走 manifest 的 `default_subsets`。
+    """
+    merged = {k: list(v or []) for k, v in (getattr(cfg, "enabled_subsets", None) or {}).items()}
+    for pack, ids in (overrides or {}).items():
+        merged[str(pack)] = list(ids or [])
+    return merged
 
 
 # ---------------------------------------------------------------------------
@@ -328,10 +342,11 @@ class WebServer:
                 if p == "/api/config":
                     return self._json(200, server.api_config_get())
                 if p == "/api/standards":
-                    return self._json(200, list_packs(STANDARDS_ROOT))
+                    return self._json(200, server.api_standards_get())
                 if p == "/api/rules":
                     # 可选 query：standards=a,b（空串=一个包都不要）/
-                    # include_user_rules=0|1 / only_structured=0|1 / logic_only=0|1
+                    # include_user_rules=0|1 / only_structured=0|1 / logic_only=0|1 /
+                    # subset=cert-c:core,STR（可重复，写法与 CLI --subset 相同）
                     # 供运行页「逐条选择规则」面板取到与本次审查一致的规则池。
                     def _flag(name, default=False):
                         raw = q.get(name)
@@ -348,6 +363,7 @@ class WebServer:
                         include_user_rules=_flag("include_user_rules", True),
                         only_structured=_flag("only_structured"),
                         logic_only=_flag("logic_only"),
+                        subsets=parse_subset_specs(q.get("subset")) or None,
                     ))
                 if p.startswith("/api/standards/") and p.endswith("/rules"):
                     # /api/standards/<id>/rules —— 标准包规则详情（含实现逻辑）
@@ -554,11 +570,16 @@ class WebServer:
         return {"ok": True, "id": pack_id}
 
     def api_rules_get(self, standards=None, include_user_rules: bool = True,
-                      only_structured: bool = False, logic_only: bool = False) -> list:
+                      only_structured: bool = False, logic_only: bool = False,
+                      subsets: dict | None = None) -> list:
         """返回规则列表。
 
         `standards=None` 表示使用配置里的 `enabled_standards`；传列表（含空列表）
         表示严格按该列表取包——这与 `_run_review` 的语义保持一致。
+
+        `subsets` 是本次运行的子集覆盖（`{pack_id: [subset_id, ...]}`），同样按
+        `_merge_subsets` 与配置合并，保证面板展示的规则池与本次审查真正会跑的
+        规则完全一致。
 
         `only_structured` / `logic_only` 会做与 `_run_review` **同一套**过滤，这样
         「逐条选择规则」面板展示的，就是本次审查真正会执行的规则池，不会出现
@@ -566,10 +587,11 @@ class WebServer:
         """
         cfg = self._load_cfg()
         pack_ids = cfg.enabled_standards if standards is None else list(standards)
+        subs_map = _merge_subsets(cfg, subsets)
         rules = []
         for rid in pack_ids:
             try:
-                rs, _ = load_pack_by_id(rid, STANDARDS_ROOT)
+                rs, _ = load_pack_by_id(rid, STANDARDS_ROOT, subsets=subs_map.get(rid))
                 rules.extend(rs)
             except FileNotFoundError:
                 pass
@@ -589,6 +611,36 @@ class WebServer:
             out.append(d)
         return out
 
+    def api_standards_get(self) -> list:
+        """标准包列表，附带规则总数与每个子集的规则（供 UI 显示"已选 N / M 条"）。
+
+        `subset_counts` 给「（N 条）」这样的定值文案用；`subset_rules` 给前端做
+        并集计数用——子集之间会重叠（一条规则可以同时属于 `core` 和 `str`），
+        把 count 相加会重复计算，只有拿到 id 列表才能算准并集。
+        """
+        out = []
+        for m in list_packs(STANDARDS_ROOT):
+            pid = m.get("id")
+            total = 0
+            counts = {}
+            subset_rules = {}
+            try:
+                rules, _ = load_standard_pack(os.path.join(STANDARDS_ROOT, pid))
+                total = len(rules)
+                for sub in (m.get("subsets") or []):
+                    if sub.get("id"):
+                        hit = [r.id for r in rules if rule_matches_subset(r, sub)]
+                        counts[sub["id"]] = len(hit)
+                        subset_rules[sub["id"]] = hit
+            except Exception:
+                pass
+            item = dict(m)
+            item["rule_total"] = total
+            item["subset_counts"] = counts
+            item["subset_rules"] = subset_rules
+            out.append(item)
+        return out
+
     def api_standard_rules(self, pack_id: str) -> dict:
         """某个标准包的元信息 + 全部规则 + 每条规则的实现逻辑说明。
 
@@ -598,15 +650,17 @@ class WebServer:
         if meta is None:
             return {"error": "未找到标准包：%s" % pack_id}
         try:
-            rules, _ = load_pack_by_id(pack_id, STANDARDS_ROOT)
+            # 文档视图要看到包里**全部**规则，不受 default_subsets 影响
+            rules, _ = load_standard_pack(os.path.join(STANDARDS_ROOT, pack_id))
         except FileNotFoundError:
             return {"error": "标准包规则目录不存在：%s" % pack_id}
         out = []
         for r in rules:
             d = r.to_dict()
             d["impl"] = _describe_impl(r)
+            d["subsets"] = rule_subsets(r, meta)
             out.append(d)
-        return {**meta, "id": pack_id, "rules": out}
+        return {**meta, "id": pack_id, "total": len(out), "rules": out}
 
     def api_models_get(self) -> dict:
         cfg = self._load_cfg()
@@ -718,6 +772,9 @@ class WebServer:
             standards = body.get("standards")
             if standards is not None:
                 cfg.enabled_standards = list(standards)
+            # 本次运行的子集覆盖（{pack: [subset_id,...]}）：只在这一次生效，不写回配置。
+            subsets = body.get("subsets") if isinstance(body.get("subsets"), dict) else None
+            subs_map = _merge_subsets(cfg, subsets)
             # Custom rules (from user_rules_dir) are a selectable set of their own.
             # Default to True so older callers keep their previous behaviour.
             include_user_rules = body.get("include_user_rules", True)
@@ -736,7 +793,7 @@ class WebServer:
             rules = []
             for sid in cfg.enabled_standards:
                 try:
-                    rs, _ = load_pack_by_id(sid, STANDARDS_ROOT)
+                    rs, _ = load_pack_by_id(sid, STANDARDS_ROOT, subsets=subs_map.get(sid))
                     rules.extend(rs)
                 except FileNotFoundError:
                     pass

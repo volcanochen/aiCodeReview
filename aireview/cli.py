@@ -21,8 +21,8 @@ from .config import load_config, example_config_text, DEFAULT_ENDPOINT, DEFAULT_
 from .llm import LLMClient
 from .parser.index import Index
 from .rules import (
-    load_pack_by_id, load_user_rules_dir as _lur, validate_rule, RuleValidationError,
-    list_packs,
+    load_pack_by_id, load_standard_pack, load_user_rules_dir as _lur, validate_rule,
+    RuleValidationError, list_packs, parse_subset_specs, rule_matches_subset,
 )
 from .rules.nl_compiler import compile_nl
 from .rules.engine import RuleEngine
@@ -53,9 +53,10 @@ def make_llm(cfg, *, allow_probe: bool = True) -> LLMClient | None:
 
 def load_all_rules(cfg) -> list:
     rules = []
+    subsets_map = getattr(cfg, "enabled_subsets", None) or {}
     for sid in cfg.enabled_standards:
         try:
-            rs, _ = load_pack_by_id(sid, STANDARDS_ROOT)
+            rs, _ = load_pack_by_id(sid, STANDARDS_ROOT, subsets=subsets_map.get(sid))
             rules.extend(rs)
         except FileNotFoundError as e:
             print(f"[warn] 标准包未找到: {e}", file=sys.stderr)
@@ -158,6 +159,24 @@ def cmd_standard_list(args, cfg):
         print(f"{p.get('id'):<14} {p.get('name', '')}  (v{p.get('version','?')})")
         if p.get("coverage_note"):
             print(f"    {p['coverage_note']}")
+        subs = p.get("subsets") or []
+        if not subs:
+            continue
+        # 子集 id 就是 --subset 要填的东西，必须能在这里查到；顺带报一下条数
+        counts = {}
+        try:
+            rules, _ = load_standard_pack(os.path.join(STANDARDS_ROOT, p.get("id", "")))
+            for s in subs:
+                if s.get("id"):
+                    counts[s["id"]] = sum(1 for r in rules if rule_matches_subset(r, s))
+        except Exception:
+            pass
+        dflt = p.get("default_subsets") or []
+        print(f"    子集({len(subs)})：" + "  ".join(
+            f"{s.get('id')}({counts[s['id']]}条)" if s.get("id") in counts else str(s.get("id"))
+            for s in subs))
+        if dflt:
+            print(f"    默认子集：{', '.join(dflt)}")
 
 
 def cmd_config_init(args, cfg):
@@ -207,6 +226,10 @@ def build_parser() -> argparse.ArgumentParser:
     pr.add_argument("--format", choices=["text", "json", "sarif"], default="text")
     pr.add_argument("--report", default=None, help="将报告写入文件")
     pr.add_argument("--standard", action="append", help="覆盖启用的标准包（可多次）")
+    pr.add_argument("--subset", action="append", metavar="PACK:ID[,ID]",
+                    help="只跑某标准包的指定子集，可多次。ID 是子集 id（小写，如 core/str/mem），"
+                         "例：--subset cert-c:core,str --subset python:security。"
+                         "可用子集见 `aireview standard list`")
     pr.add_argument("--logic-only", action="store_true",
                     help="仅运行业务逻辑类规则（graph/semantic），跳过语法/正则类（regex/ast_pattern）")
     pr.set_defaults(func=cmd_review)
@@ -247,6 +270,11 @@ def main(argv=None):
     overrides = {}
     if getattr(args, "standard", None):
         overrides["enabled_standards"] = args.standard
+    if getattr(args, "subset", None):
+        for item in args.subset:
+            if ":" not in item:
+                parser.error(f"--subset 需要 PACK:ID 形式，收到 {item!r}")
+        overrides["enabled_subsets"] = parse_subset_specs(args.subset)
     if getattr(args, "model", None):
         overrides["model"] = args.model
     if getattr(args, "endpoint", None):

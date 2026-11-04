@@ -24,6 +24,10 @@ class Config:
     api_key: str = "ollama"  # OpenAI-compatible clients need a non-empty key; Ollama ignores it.
     languages: list[str] = field(default_factory=lambda: ["c", "cpp", "python", "javascript"])
     enabled_standards: list[str] = field(default_factory=lambda: ["cert-c"])
+    # 每个标准包启用的子集：{pack_id: [subset_id, ...]}
+    # 缺省某个包 = 用该包 manifest 的 default_subsets（没声明则跑全部）；
+    # 显式空列表 [] = 该包一条规则都不跑。
+    enabled_subsets: dict[str, list[str]] = field(default_factory=dict)
     scope: dict[str, Any] = field(default_factory=lambda: {"include": ["**/*.c", "**/*.cpp", "**/*.h", "**/*.hpp", "**/*.py", "**/*.js", "**/*.ts"], "exclude": []})
     perf_budget: dict[str, Any] = field(default_factory=lambda: {"max_files": 200000, "max_loc": 200_000_000})
     user_rules_dir: str = ".aireview/rules"
@@ -70,6 +74,9 @@ model: qwen/qwen2.5-coder-14b        # LM Studio 中的模型 id（用 `aireview
 api_key: lmstudio                    # 本地服务通常忽略，填任意非空值即可
 languages: [c, cpp, python, javascript]   # languages to parse
 enabled_standards: [cert-c]           # built-in standard packs to load (cert-c, cert-cpp, python, javascript)
+# 每个包只跑哪些子集；不写该包 = 全部子集。子集 id 见「标准包」页。
+# enabled_subsets:
+#   cert-c: [core, STR, MEM]
 scope:
   include: ["**/*.c", "**/*.cpp", "**/*.h", "**/*.hpp", "**/*.py", "**/*.js", "**/*.ts"]
   exclude: ["**/third_party/**", "**/build/**", "**/node_modules/**"]

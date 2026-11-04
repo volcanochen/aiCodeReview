@@ -58,13 +58,43 @@ def test_review_smoke():
     eng = RuleEngine(idx, None)
     # load CERT C pack rules
     from aireview.rules import load_pack_by_id
-    rules, _ = load_pack_by_id("cert-c", os.path.join(here, "aireview", "rules", "standards"))
+    # 用纯静态子集跑，结果不依赖本地模型
+    rules, _ = load_pack_by_id("cert-c", os.path.join(here, "aireview", "rules", "standards"),
+                               subsets=["static"])
     res = eng.run(rules)
     ids = {f["rule_id"] for f in res["findings"]}
-    assert "cert-c-fio34" in ids, "gets() should be detected"
-    assert "cert-c-con33" in ids, "cross-module signal safety should fire"
+    assert "ENV33-C" in ids, "system() should be detected"
+    assert "SIG30-C" in ids, "cross-module signal safety should fire"
     idx.close()
-    print("[ok] review smoke: files=%d findings=%d" % (stats.files, len(res["findings"])))
+    print("[ok] review smoke: files=%d rules=%d findings=%d"
+          % (stats.files, len(rules), len(res["findings"])))
+
+
+def test_subsets():
+    """子集机制：全集 / 默认子集 / 类别子集 / 空选择 的行为。"""
+    here = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    root = os.path.join(here, "aireview", "rules", "standards")
+    from aireview.rules import load_pack_by_id, load_standard_pack
+
+    all_rules, manifest = load_standard_pack(os.path.join(root, "cert-c"))
+    core, _ = load_pack_by_id("cert-c", root, subsets=["core"])
+    static, _ = load_pack_by_id("cert-c", root, subsets=["static"])
+    none_selected, _ = load_pack_by_id("cert-c", root, subsets=[])
+    dflt, _ = load_pack_by_id("cert-c", root)          # 未指定 → default_subsets
+
+    assert len(all_rules) == 122, len(all_rules)
+    assert 0 < len(core) < len(all_rules), len(core)
+    assert 0 < len(static) < len(all_rules), len(static)
+    assert len(none_selected) == 0, "显式空列表应该一条都不跑"
+    assert all(r.type != "semantic" for r in static), "纯静态子集不应含 semantic 规则"
+    assert {r.id for r in dflt} == {r.id for r in core}, "默认应等于 default_subsets"
+    assert manifest.get("default_subsets") == ["core"]
+    # 每条规则都能归到某个子集
+    from aireview.rules import rule_subsets
+    for r in all_rules:
+        assert rule_subsets(r, manifest), r.id
+    print("[ok] subsets: all=%d core=%d static=%d empty=%d"
+          % (len(all_rules), len(core), len(static), len(none_selected)))
 
 
 def test_nl_compile():
@@ -124,8 +154,45 @@ def test_index_scope_pruning():
     print("[ok] index scope pruning: stale projects pruned, missing path safe")
 
 
+def test_subset_overrides():
+    """`PACK:ID` 写法解析 / 未知子集要出声 / 本次覆盖与配置的合并规则。"""
+    import warnings
+    from types import SimpleNamespace
+    from aireview.rules import load_pack_by_id, parse_subset_specs
+    from aireview.web.server import _merge_subsets
+
+    # CLI --subset 与 Web ?subset= 共用同一套写法
+    got = parse_subset_specs(["cert-c:core,str", "python:security", "cert-c:mem", "bad-no-colon"])
+    assert got == {"cert-c": ["core", "str", "mem"], "python": ["security"]}, got
+    assert parse_subset_specs(["cert-c:"]) == {"cert-c": []}, "空 id 列表要能表达「一条都不跑」"
+    assert parse_subset_specs(None) == {}
+
+    here = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    root = os.path.join(here, "aireview", "rules", "standards")
+
+    # 子集 id 是小写（str），tag 才是大写（STR）：写错必须告警，不能静默返回 0 条
+    with warnings.catch_warnings(record=True) as w:
+        warnings.simplefilter("always")
+        bad, _ = load_pack_by_id("cert-c", root, subsets=["STR"])
+    assert bad == [], "未知子集不应命中任何规则"
+    assert any("没有这些子集" in str(x.message) for x in w), [str(x.message) for x in w]
+
+    # 合并：本次覆盖优先，未提到的包沿用配置
+    cfg = SimpleNamespace(enabled_subsets={"cert-c": ["core"], "python": ["all"]})
+    assert _merge_subsets(cfg, None) == {"cert-c": ["core"], "python": ["all"]}
+    merged = _merge_subsets(cfg, {"cert-c": ["str", "mem"], "logic": []})
+    assert merged["cert-c"] == ["str", "mem"], merged
+    assert merged["python"] == ["all"], "未覆盖的包必须保持配置值"
+    assert merged["logic"] == [], "显式空列表表示该包一条都不跑"
+    # 不改动入参（避免把一次运行的临时选择写回配置字典）
+    assert cfg.enabled_subsets == {"cert-c": ["core"], "python": ["all"]}, cfg.enabled_subsets
+    print("[ok] subset overrides: parse/merge/warn-on-typo")
+
+
 if __name__ == "__main__":
     test_review_smoke()
+    test_subsets()
+    test_subset_overrides()
     test_nl_compile()
     test_semantic()
     test_index_scope_pruning()

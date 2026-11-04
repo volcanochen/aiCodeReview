@@ -10,7 +10,8 @@
 - **跨模块理解**：解析出符号表 + 调用图 + 依赖图并落盘 SQLite（hash 增量），支撑跨文件 / 跨模块分析（如信号处理函数调用链展开）。
 - **自然语言规则**：一句话（中/英）由本地模型编译为结构化规则（`ast_pattern` / `regex` / `graph` / `semantic`），带 schema 校验与低置信人审闸口。
 - **业务逻辑模式**：`logic-only` 跳过语法/正则类检查，仅做"整体推导业务逻辑 → 逐模块回归找矛盾"。
-- **内置标准包**：CERT C、CERT C++、Python、JavaScript/TS、logic；均可在 Web 界面可视化启用 / 卸载，也可安装自定义包。
+- **内置标准包**：CERT C（122 条全集）、CERT C++（83 条全集）、Python（29 条）、JavaScript/TS（26 条）、logic；均可在 Web 界面可视化启用 / 卸载，也可安装自定义包。
+- **子集选择**：包内按标准类别拆成子集（如 CERT C 的 `core` / `static` / `str` / `mem` …），标准包页可持久设定、运行页可按次覆盖、命令行用 `--subset`；默认只跑「核心高危」，避免上百条规则一次全上。
 - **零额外依赖的 Web UI**：基于 Python 标准库 `http.server`，配置 / 运行 / 规则管理 / 结果展示一站式，纯本地监听。
 
 ## 对应需求的实现
@@ -21,7 +22,7 @@
 | 2. 大项目 / 多模块 / 理解模块间逻辑 | `aireview/parser/`：tree-sitter 解析 C/C++ → 符号表 + **调用图 + 依赖图**，落盘 SQLite（hash 增量）。图查询支撑跨文件/跨模块分析（如信号处理函数调用链展开）。 |
 | 3. 自然语言自定义规则 | `aireview/rules/nl_compiler.py`：本地 LLM 把一句中文/英文描述编译成结构化规则（`ast_pattern` / `regex` / `graph` / `semantic`），带 schema 校验与低置信人审闸口。 |
 | 4. 规则驱动检查 + 规则维度报告 | `aireview/rules/engine.py` + `aireview/reporter/`：逐规则匹配，命中即报；报告按规则维度聚合，支持 文本 / JSON / SARIF，严重级门禁退出码。 |
-| 5. 内置检测标准 | `aireview/rules/standards/`：内置 **CERT C**（可自动化高价值子集，含 AST/正则/跨模块图/语义四类规则）、**CERT C++** 脚手架包、**Python**、**JavaScript / TypeScript** 通用反模式与安全隐患包（正则类型），以及 **logic（业务逻辑一致性 / 跨模块矛盾）** 分析包（基于本地大模型，先推导各模块业务逻辑与不变量，再从调用图逐对回归检测矛盾）。所有包可裁剪/扩展/卸载，也可在 Web 界面安装自定义包。 |
+| 5. 内置检测标准 | `aireview/rules/standards/`：内置 **CERT C**（122 条全集）、**CERT C++**（83 条全集）、**Python**（29 条）、**JavaScript / TypeScript**（26 条）反模式与安全隐患包，以及 **logic（业务逻辑一致性 / 跨模块矛盾）** 分析包（基于本地大模型，先推导各模块业务逻辑与不变量，再从调用图逐对回归检测矛盾）。每个包按标准类别拆成**子集**（含推荐预设），可只跑关注的类别；所有包可裁剪/扩展/卸载，也可在 Web 界面安装自定义包。 |
 
 ## 安装
 
@@ -44,7 +45,8 @@ aireview/
 ├── rules/
 │   ├── engine.py          # 规则引擎：ast_pattern / regex / graph / semantic
 │   ├── nl_compiler.py     # 自然语言 → 结构化规则
-│   └── standards/         # 内置标准包：cert-c / cert-cpp / python / javascript / logic
+│   └── standards/         # 内置标准包：cert-c(122) / cert-cpp(83) / python(29) / javascript(26) / logic
+│                          # 每个包：manifest.yaml（含 subsets）+ rules/<类别>.yaml
 ├── reporter/              # 报告渲染：text / json / sarif + 门禁
 └── web/                   # 本地 Web UI（http.server + static/index.html）
 tests/integration_test.py  # 集成测试
@@ -76,12 +78,15 @@ python -m aireview.cli review --path ./your_project --format sarif --report repo
 # 4) 用自然语言新增规则（调用本地模型编译为结构化规则）
 python -m aireview.cli rule add "禁止在循环里调用 malloc" --model qwen/qwen2.5-coder-14b
 
-# 5) 查看内置标准包与规则
+# 5) 查看内置标准包与规则（standard list 会列出每个包的子集 id 与条数）
 python -m aireview.cli standard list
 python -m aireview.cli rule list
 
 # 6) 跳过需模型的语义规则（纯静态离线）
 python -m aireview.cli review --path ./your_project --only-structured
+
+# 7) 只跑某几个子集（PACK:ID，可多次；id 见 standard list）
+python -m aireview.cli review --path ./your_project --subset cert-c:static --subset python:security
 ```
 
 > 若 LM Studio 的模型 id 含 `/`（如 `qwen/qwen2.5-coder-14b`），`--model` 直接传该完整 id 即可。
@@ -105,7 +110,7 @@ python -m aireview.web --root . --port 8765
 - **配置**：端点 / 模型 / 扫描范围 / 高级参数全部可编辑保存；「测试连接」探测本地模型；「生成示例配置」。
 - **标准包**：勾选启用 / 停用 CERT C / CERT C++ / Python / JavaScript / **logic（跨模块业务逻辑矛盾）** 等内置包（启用 Python / JS 包时会自动把对应语言加入解析范围）；非内置包可一键**卸载**；每个包右侧有「**规则说明**」可展开该包全部规则的逐条说明书；并提供「安装新标准包」卡片，粘贴 YAML（含 `id` / `manifest` / `rules`）即可安装自定义规则集。
 - **规则管理**：用自然语言描述规则 → 调用本地模型编译 → YAML 预览 → 保存为用户规则；内置/用户规则列表、启用开关、删除；离线时降级为可编辑模板。
-- **运行与结果**：选择本地目录（内置目录浏览器）、选择**检查集**（标准包 + 「自定义规则」集合，可直接勾掉整个自定义规则集只跑标准包）、**高级配置里逐条勾选规则**、选格式、运行审查；长任务轮询进度；结果含门禁横幅、严重度卡片、按严重度分组可展开的发现项（代码片段 + 修复建议 + 置信度）、跳过规则提示，以及 JSON / SARIF / Text 下载。
+- **运行与结果**：选择本地目录（内置目录浏览器）、选择**检查集**（标准包 + 「自定义规则」集合，可直接勾掉整个自定义规则集只跑标准包）、**每个包可单独挑子集**（只对本次运行生效，不写回配置）、**高级配置里逐条勾选规则**、选格式、运行审查；长任务轮询进度；结果含门禁横幅、严重度卡片、按严重度分组可展开的发现项（代码片段 + 修复建议 + 置信度）、跳过规则提示，以及 JSON / SARIF / Text 下载。
 
 > 界面与命令行共用同一份 `.aireview.yaml` 与用户规则目录，二者配置互通。
 
@@ -116,8 +121,44 @@ python -m aireview.web --root . --port 8765
 | `standards` | `string[]` \| `null` | `null` | 要运行的标准包 id 列表。**传空数组表示"一个标准包都不要"**（不会被配置里的默认值顶替）；省略或 `null` 才回落到 `.aireview.yaml` 的 `enabled_standards`。 |
 | `include_user_rules` | `bool` | `true` | 是否加载用户规则目录（`user_rules_dir`）下的自定义规则。为 `false` 时整集跳过。 |
 | `exclude_rules` | `string[]` | `[]` | 按规则 id 精确剔除，用于"整集都要，只关某一条"。 |
+| `subsets` | `{pack: string[]}` | `{}` | **本次运行**的子集覆盖。出现的包以它为准（`[]` = 该包一条都不跑），没出现的包沿用 `.aireview.yaml` 的 `enabled_subsets`。不写回配置。 |
 
-> 默认值刻意设为向后兼容：老调用方不传这两个字段时行为不变（仍会跑自定义规则）。
+> 默认值刻意设为向后兼容：老调用方不传这些字段时行为不变（仍会跑自定义规则、仍按配置的子集）。
+
+### 标准包 · 子集（subset）
+
+一个标准包动辄上百条规则（CERT C 全集 122 条），全量跑一次要几分钟；子集让「跑哪些规则」变成可选项，而不用自己挑 id。
+
+- **定义在包里**：`manifest.yaml` 的 `subsets` 声明子集，`default_subsets` 声明默认值。
+  ```yaml
+  subsets:
+    - {id: all,    name: 全集（122 条）}
+    - {id: core,   name: 核心高危（推荐）, rules: [STR31-C, MEM30-C, ...]}   # 显式列 id
+    - {id: static, name: 纯静态（不依赖模型）, tags: [auto, heuristic, graph]} # 按标签取
+    - {id: str,    name: 字符与字符串 (STR), tags: [STR]}                    # 按 CERT 类别取
+  default_subsets: [core]
+  ```
+  规则侧用 `tags` 打标（如 `tags: [STR, auto, core]`）。命中条件：子集 `rules` 含该 id，**或**子集 `tags` 与规则 `tags` 有交集；两者都空表示"本包全部规则"。多个子集取**并集**（重叠的规则只跑一次）。
+- **默认选择**：`cert-c` / `cert-cpp` 默认 `core`（22 条静态 + 少量语义，关注最高危问题）；`python` / `javascript` 默认 `all`。
+- **三处可选**：
+  1. **标准包页**（持久）：每个包下面的「子集选择」勾选框，改动立即写入 `.aireview.yaml` 的 `enabled_subsets`；
+  2. **运行页**（本次）：每个包右侧的「子集 core ▾」按钮，展开勾选后**只影响这一次运行**，面板标注「已改（仅本次运行生效）」，点「跟随配置」可撤回；
+  3. **命令行**：`--subset PACK:ID[,ID]`（可多次）。
+  ```bash
+  python -m aireview.cli standard list          # 列出每个包的子集 id 与条数
+  python -m aireview.cli review --path ./src --subset cert-c:core,str --subset python:security
+  ```
+- **配置写法**：`.aireview.yaml`
+  ```yaml
+  enabled_subsets:
+    cert-c: [core, str]   # 该包只跑这两个子集
+    python: [all]
+    # 缺省某个包 = 用它的 default_subsets；显式写 [] = 该包一条都不跑
+  ```
+- **写错会告警，不会静默跑 0 条**：子集 id 是小写（`str`/`mem`），大写 `STR` 是规则 tag 不是子集 id，写成 `--subset cert-c:STR` 会打印
+  `标准包 cert-c 没有这些子集：STR（可用：all, core, static, ...）`。
+
+> 运行页顶部实时显示「本次检查集：共 N 条规则（regex x · semantic y · graph z）」，与 `/api/rules` 同一套过滤，改子集 / 改检查集后立刻更新。
 
 ### 高级配置 · 逐条选择规则
 
@@ -134,6 +175,8 @@ python -m aireview.web --root . --port 8765
 ```bash
 # 与审查请求一一对应：standards / include_user_rules / only_structured / logic_only
 curl 'http://127.0.0.1:8765/api/rules?standards=python&include_user_rules=1&only_structured=1'
+# 子集也能带（可重复，写法与 CLI --subset 相同）
+curl 'http://127.0.0.1:8765/api/rules?standards=cert-c&include_user_rules=0&subset=cert-c:str,mem'
 ```
 
 > 过滤逻辑只在后端 `api_rules_get()` 里实现一份，前端不再重复判断类型，避免两套规则逐渐漂移。
@@ -265,8 +308,11 @@ python -m aireview.cli review --path sample_project --standard logic --logic-onl
 python -m tests.integration_test
 ```
 
+覆盖：索引 + 跨模块调用图、`ast_pattern`/`regex`/`graph` 匹配、子集过滤（全集 / 默认 / 类别 / 空选择 / 未知子集告警）、子集覆盖合并、NL→规则编译、`semantic` 匹配（假模型）、索引裁剪。
+
 ## 已知局限
 
-- **CERT 覆盖率**：CERT C 共 100+ 条，本包仅纳入可静态自动化的高价值子集；依赖运行行为/深层语义的规则以 `semantic` 类型标注，需本地模型参与判定，未做全量覆盖。
+- **规则数量与执行成本**：CERT C 已补齐 122 条、CERT C++ 83 条全集，但其中 **85 / 83 条中的大部分依赖 `semantic`（本地模型）**，行级定位精度低于静态规则，且全量跑一次要几分钟。日常建议只跑默认的 `core` 或 `static` 子集，需要全面核查时再显式选 `all`。
+- **CERT 判定强度**：语义类规则由本地小模型判定，等价于「有理由的怀疑」而非合规结论；对外出具报告时静态规则（36 条 regex + 1 条 graph）的证据强度更高。
 - **跨文件符号解析精度**：基于 include + 命名约定的多策略解析，tree-sitter 下可能存在少量漏/误；对 C/C++ 精度敏感场景可后续接入 clang。
 - **本地小模型准确性**：NL→规则 与 semantic 判定受模型能力影响，已用 schema 校验 + 低置信人审闸口兜底；关键规则建议优先用 `ast_pattern`/`regex`。

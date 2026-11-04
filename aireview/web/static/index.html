@@ -281,7 +281,8 @@
         </div>
       </div>
       <label style="margin-top:10px">选择要运行的检查集（标准包 / 自定义规则；默认使用配置）</label>
-      <div id="rv-standards" class="inline" style="flex-wrap:wrap"></div>
+      <div id="rv-standards" style="display:flex;flex-direction:column;gap:2px"></div>
+      <div class="muted" id="rv-total" style="font-size:12px;margin-top:8px"></div>
 
       <details id="rv-adv" style="margin-top:14px;border-top:1px solid var(--border);padding-top:12px" ontoggle="onAdvToggle(this)">
         <summary style="cursor:pointer;font-weight:600;font-size:13px">高级配置 · 逐条选择规则</summary>
@@ -342,6 +343,7 @@ const state={config:null,standards:[],rules:[],models:[],lastResult:null,
   advExcluded:new Set(), // 被用户取消勾选的规则 id
   advLoadedKey:'',       // 规则池对应的查询键，用于判断是否需要重新拉取
   packRules:{},          // 标准包 id → 规则说明书（懒加载缓存）
+  rvSubs:{},             // 运行页本次运行的子集覆盖：{pack_id: [subset_id,...]}（不写回配置）
   openPacks:new Set()};  // 当前展开的包 id（重渲染后要恢复）
 
 document.querySelectorAll('.tab').forEach(t=>t.onclick=()=>{
@@ -454,13 +456,96 @@ function renderStandards(){
           ${uninstall}
         </div>
       </div>
+      <div id="pk-sub-${p.id}" style="padding:0 0 12px"></div>
       <div id="pk-detail-${p.id}" style="display:none;padding:0 0 14px"></div>
     </div>`;
   }).join('');
+  state.standards.forEach(p=>renderSubsets(p));
   // 启用/停用会整体重渲染，把之前展开的包重新展开
   [...(state.openPacks||[])].forEach(id=>{
     const b=el('pk-detail-'+id); if(b && b.style.display==='none') togglePackRules(id);
   });
+}
+
+// ---------- 标准包子集选择 ----------
+function packSubsets(p){ return p.subsets||[]; }
+
+// 当前生效的子集：显式配置优先，否则用 manifest 的 default_subsets，再否则全选
+function currentSubsets(p){
+  const cfg=(state.config&&state.config.enabled_subsets)||{};
+  if(Object.prototype.hasOwnProperty.call(cfg,p.id)) return cfg[p.id]||[];
+  if(p.default_subsets&&p.default_subsets.length) return p.default_subsets;
+  return packSubsets(p).map(s=>s.id);
+}
+
+function renderSubsets(p){
+  const box=el('pk-sub-'+p.id);
+  if(!box) return;
+  const subs=packSubsets(p);
+  if(!subs.length){ box.innerHTML=''; return; }
+  const on=currentSubsets(p);
+  const counts=p.subset_counts||{};
+  const items=subs.map(s=>{
+    const n=counts[s.id];
+    const label=`${s.name||s.id}${typeof n==='number'?`（${n} 条）`:''}`;
+    const tip=(s.description||'').replace(/"/g,'&quot;');
+    return `<label class="inline" title="${tip}" style="margin:0 14px 6px 0;font-size:12px">
+      <input type="checkbox" value="${s.id}" ${on.includes(s.id)?'checked':''} onchange="toggleSubset('${p.id}','${s.id}',this.checked)">
+      ${label}</label>`;
+  }).join('');
+  const dflt=(p.default_subsets||[]).join('/')||'—';
+  box.innerHTML=`<div style="border-left:2px solid var(--border);padding-left:10px">
+    <div class="muted" style="font-size:12px;margin-bottom:6px">子集选择（默认：${escapeHtml(dflt)}）· 已选 ${on.length} / ${subs.length} 个
+      <span id="pk-eff-${p.id}" style="margin-left:8px"></span>
+      <a href="#" onclick="resetSubsets('${p.id}');return false" style="margin-left:8px">恢复默认</a>
+    </div>
+    <div style="display:flex;flex-wrap:wrap">${items}</div>
+  </div>`;
+  refreshSubsetCount(p.id);
+}
+
+// 用 /api/rules 实测「当前子集下真正会跑的规则数」
+async function refreshSubsetCount(packId){
+  const span=el('pk-eff-'+packId);
+  if(!span) return;
+  try{
+    const rs=await API('GET','/api/rules?standards='+encodeURIComponent(packId)+'&include_user_rules=0');
+    if(!Array.isArray(rs)) return;
+    const total=(state.standards.find(x=>x.id===packId)||{}).rule_total||rs.length;
+    span.textContent=`· 生效 ${rs.length} / ${total} 条规则`;
+    span.style.color=rs.length?'var(--ok)':'var(--fail)';
+  }catch(e){ /* 忽略计数失败 */ }
+}
+
+async function toggleSubset(packId,subId,on){
+  const p=state.standards.find(x=>x.id===packId);
+  if(!p) return;
+  const cur=currentSubsets(p);
+  const next=on?[...new Set([...cur,subId])]:cur.filter(x=>x!==subId);
+  await saveSubsets(packId,next);
+}
+
+async function resetSubsets(packId){
+  const p=state.standards.find(x=>x.id===packId);
+  if(!p) return;
+  const next=(p.default_subsets&&p.default_subsets.length)?p.default_subsets:packSubsets(p).map(s=>s.id);
+  await saveSubsets(packId,next);
+}
+
+async function saveSubsets(packId,ids){
+  const c=readConfig();
+  const subs=Object.assign({},(state.config&&state.config.enabled_subsets)||{});
+  subs[packId]=ids;
+  const r=await API('PUT','/api/config',Object.assign(c,{enabled_subsets:subs}));
+  if(r.ok){
+    state.config=r.config;
+    renderStandards();
+    renderReviewStandards();   // 运行页的「生效 N / M 条」跟着配置走
+    updateDashboard();
+    toast(`${packId} 子集已更新（${ids.length} 个）`,'ok');
+  }else{
+    toast('保存子集失败：'+(r.error||''),'err');
+  }
 }
 
 // ---------- 标准包 → 规则说明书 ----------
@@ -505,7 +590,7 @@ function renderPackRules(id){
 }
 
 // 说明一个规则匹配器的实现逻辑（impl 由后端按引擎真实行为生成）
-function ruleDocHtml(r){
+function ruleDocHtml(r,pack){
   const im=r.impl||{};
   const row=(k,v)=>v?`<div class="doc-row"><span class="doc-k">${k}</span>${v}</div>`:'';
   const steps=(im.steps&&im.steps.length)
@@ -521,12 +606,18 @@ function ruleDocHtml(r){
         : `<div class="doc-row"><span class="doc-k">参数 ${escapeHtml(k)}</span><code class="k">${escapeHtml(val)}</code></div>`;
     }).join(''):'';
   const refs=(r.references||[]).map(u=>`<a href="${u}" target="_blank" rel="noopener">${escapeHtml(u)}</a>`).join('<br>');
+  const auto=(r.tags||[]).includes("semantic")?"语义（需模型）":((r.tags||[]).includes("auto")?"静态·精确":"静态·启发式");
+  const subNames=((r.subsets)||[]).map(id=>{
+    const def=((pack&&pack.subsets)||[]).find(s=>s.id===id);
+    return def?`${def.name||id}`:id;
+  });
   const body=[
     row('这条规则在查什么', escapeHtml(r.description||r.name||'')),
     row('为什么这样规定', escapeHtml(r.rationale||'')),
     row('一句话实现', `<b>${escapeHtml(im.summary||'')}</b><div class="muted" style="font-size:12px">匹配引擎：${escapeHtml(im.engine||r.type||'')} · 作用范围：${escapeHtml(im.target||'')}</div>`),
     steps, req, params,
     row('怎么修', escapeHtml(r.fix_suggestion||'')),
+    row('自动化方式', `<b>${escapeHtml(auto)}</b>${subNames.length?`<div class="muted" style="font-size:12px">所属子集：${escapeHtml(subNames.join('、'))}</div>`:''}`),
     row('规范出处', refs),
   ].join('');
   return `<details class="rule-doc">
@@ -546,7 +637,8 @@ function renderPackRuleList(id){
   const q=((el('pk-q-'+id)||{}).value||'').trim().toLowerCase();
   const all=d.rules||[];
   const shown=q?all.filter(r=>((r.name||'')+' '+(r.id||'')+' '+(r.description||'')+' '+(r.rationale||'')+' '+((r.impl||{}).summary||'')).toLowerCase().includes(q)):all;
-  box.innerHTML=shown.length?shown.map(ruleDocHtml).join(''):'<div class="empty" style="padding:18px">没有匹配的规则</div>';
+  const pack=state.standards.find(x=>x.id===id);
+  box.innerHTML=shown.length?shown.map(r=>ruleDocHtml(r,pack)).join(''):'<div class="empty" style="padding:18px">没有匹配的规则</div>';
   const cnt=el('pk-cnt-'+id); if(cnt) cnt.textContent=`显示 ${shown.length} / ${all.length} 条`;
 }
 
@@ -651,29 +743,167 @@ async function saveRule(){
 }
 
 // ---------- review ----------
+// 运行页的子集选择：默认跟配置走，用户在这里改动只对**本次运行**生效（不写回配置）。
+// 生效顺序：本次覆盖 > 配置 enabled_subsets > manifest default_subsets > 全部子集
+function rvSubsFor(p){
+  if(state.rvSubs && Object.prototype.hasOwnProperty.call(state.rvSubs,p.id)) return state.rvSubs[p.id];
+  const cfg=(state.config&&state.config.enabled_subsets)||{};
+  if(Object.prototype.hasOwnProperty.call(cfg,p.id)) return cfg[p.id]||[];
+  if(p.default_subsets&&p.default_subsets.length) return p.default_subsets;
+  return (p.subsets||[]).map(s=>s.id);
+}
+// 子集之间会重叠（一条规则可同时属于 core 和 str），所以只能算并集，不能把计数相加
+function rvSubCount(p,ids){
+  const map=p.subset_rules||{};
+  if(!Object.keys(map).length) return p.rule_total||0;   // 兼容旧 payload
+  const all=(p.subsets||[]).map(s=>s.id);
+  if(ids&&ids.length===all.length && all.every(x=>ids.includes(x))) return p.rule_total||0;
+  const set=new Set();
+  (ids||[]).forEach(sid=>(map[sid]||[]).forEach(id=>set.add(id)));
+  return set.size;
+}
+function rvTouched(packId){
+  return !!(state.rvSubs && Object.prototype.hasOwnProperty.call(state.rvSubs,packId));
+}
+
 function renderReviewStandards(){
   const box=el('rv-standards');
   const enabled=state.config.enabled_standards||[];
   const userCount=(state.rules||[]).filter(r=>r.source==='user').length;
-  const userItem=`<label class="inline" style="margin:0 12px 6px 0;font-weight:600"><input type="checkbox" value="__user_rules__" checked> 自定义规则（${userCount} 条）</label>`;
-  const packs=state.standards.map(p=>`<label class="inline" style="margin:0 12px 6px 0"><input type="checkbox" value="${p.id}" ${enabled.includes(p.id)?'checked':''}> ${p.name||p.id}</label>`).join('');
-  box.innerHTML=userItem+packs;
+  let html=`<div><label class="inline" style="margin:0;font-weight:600"><input type="checkbox" class="rv-usr" value="__user_rules__" checked> 自定义规则（${userCount} 条）</label></div>`;
+  html+=state.standards.map(p=>{
+    const on=enabled.includes(p.id);
+    const subs=p.subsets||[];
+    const sel=rvSubsFor(p);
+    const eff=`<span class="muted" id="rv-eff-${p.id}" style="font-size:12px">生效 ${rvSubCount(p,sel)} / ${p.rule_total||0} 条</span>`;
+    const btn=subs.length
+      ? `<button class="btn ghost sm" id="rv-sub-btn-${p.id}" onclick="toggleRvSubs('${p.id}')">子集 ${escapeHtml(sel.join('/')||'空')} ▾</button>`
+      : '';
+    const panel=subs.length?`<div id="rv-sub-${p.id}" style="display:none;margin:4px 0 8px 22px"></div>`:'';
+    return `<div>
+      <div class="inline" style="gap:10px;margin:0">
+        <label class="inline" style="margin:0"><input type="checkbox" class="rv-pk" value="${p.id}" ${on?'checked':''}> ${p.name||p.id}</label>
+        ${eff}${btn}
+      </div>${panel}</div>`;
+  }).join('');
+  box.innerHTML=html;
   // 检查集变化 → 逐条选择面板的规则池要跟着变
-  box.querySelectorAll('input[type=checkbox]').forEach(cb=>{
-    cb.onchange=()=>{ if(state.advOn) loadAdvPool(true); };
+  box.querySelectorAll('input.rv-pk, input.rv-usr').forEach(cb=>{
+    cb.onchange=()=>{ if(state.advOn) loadAdvPool(true); scheduleRvTotal(); };
   });
+  updateRvTotal();
+}
+
+function renderRvSubPanel(p){
+  const box=el('rv-sub-'+p.id);
+  if(!box) return;
+  const subs=p.subsets||[];
+  const sel=rvSubsFor(p);
+  const counts=p.subset_counts||{};
+  const note=rvTouched(p.id)
+    ? '<span style="color:var(--accent)">已改（仅本次运行生效）</span>'
+    : '<span class="muted">跟随配置</span>';
+  const items=subs.map(s=>{
+    const n=counts[s.id];
+    const tip=escapeHtml(s.description||'').replace(/"/g,'&quot;');
+    return `<label class="inline" title="${tip}" style="margin:0 14px 6px 0;font-size:12px">
+      <input type="checkbox" value="${s.id}" ${sel.includes(s.id)?'checked':''} onchange="rvToggleSub('${p.id}','${s.id}',this.checked)">
+      ${escapeHtml(s.name||s.id)}${typeof n==='number'?`（${n}）`:''}</label>`;
+  }).join('');
+  box.innerHTML=`<div style="border-left:2px solid var(--border);padding-left:10px">
+    <div class="muted" style="font-size:12px;margin-bottom:6px">
+      子集 · 已选 ${sel.length} / ${subs.length} · 生效 ${rvSubCount(p,sel)} / ${p.rule_total||0} 条 · ${note}
+      <button class="btn ghost sm" style="margin-left:8px" onclick="rvSubPreset('${p.id}','all')">全选</button>
+      <button class="btn ghost sm" onclick="rvSubPreset('${p.id}','default')">跟随配置</button>
+    </div>
+    <div style="display:flex;flex-wrap:wrap">${items}</div>
+  </div>`;
+}
+
+function toggleRvSubs(id){
+  const box=el('rv-sub-'+id);
+  const p=state.standards.find(x=>x.id===id);
+  if(!box||!p) return;
+  if(box.style.display==='none'){ renderRvSubPanel(p); box.style.display='block'; }
+  else box.style.display='none';
+}
+
+function refreshRvPack(p){
+  const sel=rvSubsFor(p);
+  const eff=el('rv-eff-'+p.id);
+  if(eff) eff.textContent=`生效 ${rvSubCount(p,sel)} / ${p.rule_total||0} 条`;
+  // 按钮文案同步（不能整块重渲染，否则展开状态和勾选都会丢）
+  const b=el('rv-sub-btn-'+p.id);
+  if(b) b.textContent=`子集 ${sel.join('/')||'空'} ▾`;
+  renderRvSubPanel(p);
+}
+
+function rvApplySubs(p,ids){
+  state.rvSubs=state.rvSubs||{};
+  state.rvSubs[p.id]=ids;
+  refreshRvPack(p);
+  scheduleRvTotal();
+  if(state.advOn) loadAdvPool(true);   // 规则池跟着子集变
+}
+function rvToggleSub(packId,subId,on){
+  const p=state.standards.find(x=>x.id===packId);
+  if(!p) return;
+  const cur=rvSubsFor(p);
+  rvApplySubs(p, on?[...new Set([...cur,subId])]:cur.filter(x=>x!==subId));
+}
+function rvSubPreset(packId,kind){
+  const p=state.standards.find(x=>x.id===packId);
+  if(!p) return;
+  if(kind==='all'){ rvApplySubs(p,(p.subsets||[]).map(s=>s.id)); return; }
+  // 跟随配置：丢掉本次覆盖，回到配置/默认值
+  if(state.rvSubs) delete state.rvSubs[packId];
+  refreshRvPack(p);
+  scheduleRvTotal();
+  if(state.advOn) loadAdvPool(true);
+}
+
+// 「本次检查集共 N 条规则」：走与审查完全相同的 /api/rules 过滤，不做第二套判断
+let rvTotalTimer=null;
+function scheduleRvTotal(){ clearTimeout(rvTotalTimer); rvTotalTimer=setTimeout(updateRvTotal,300); }
+async function updateRvTotal(){
+  const span=el('rv-total'); if(!span) return;
+  const s=currentSelection();
+  try{
+    const r=await API('GET','/api/rules?'+rvRulesQuery(s).toString());
+    const list=Array.isArray(r)?r:(r&&r.rules)||[];
+    if(!list.length){ span.textContent='本次检查集：0 条规则（不会跑任何检查）'; span.style.color='var(--fail)'; return; }
+    const by={}; list.forEach(x=>{by[x.type]=(by[x.type]||0)+1;});
+    const parts=['regex','ast_pattern','semantic','graph'].filter(k=>by[k]).map(k=>`${k} ${by[k]}`);
+    span.textContent=`本次检查集：共 ${list.length} 条规则（${parts.join(' · ')}）`;
+    span.style.color='';
+  }catch(e){ span.textContent=''; }
+}
+
+function rvRulesQuery(s){
+  const qs=new URLSearchParams({
+    standards:s.standards.join(','),
+    include_user_rules:s.include_user_rules?1:0,
+    only_structured:el('rv-only').checked?1:0,
+    logic_only:el('rv-logic').checked?1:0,
+  });
+  Object.keys(s.subsets||{}).forEach(pack=>qs.append('subset',pack+':'+(s.subsets[pack]||[]).join(',')));
+  return qs;
 }
 
 // ---------- 高级配置 · 逐条选择规则 ----------
 function currentSelection(){
-  const vals=[...document.querySelectorAll('#rv-standards input:checked')].map(cb=>cb.value);
-  return {include_user_rules:vals.includes('__user_rules__'),
-          standards:vals.filter(v=>v!=='__user_rules__')};
+  const vals=[...document.querySelectorAll('#rv-standards input.rv-pk:checked, #rv-standards input.rv-usr:checked')].map(cb=>cb.value);
+  const standards=vals.filter(v=>v!=='__user_rules__');
+  // 只把用户改过的包子集作为本次覆盖发给后端；没改的沿用配置
+  const subsets={};
+  standards.forEach(id=>{ if(rvTouched(id)) subsets[id]=(state.rvSubs[id]||[]); });
+  return {include_user_rules:vals.includes('__user_rules__'), standards, subsets};
 }
 
 function advSelectionKey(){
   const s=currentSelection();
   return [s.standards.slice().sort().join(','), s.include_user_rules?1:0,
+          JSON.stringify(s.subsets||{}),
           el('rv-only').checked?1:0, el('rv-logic').checked?1:0].join('|');
 }
 
@@ -682,12 +912,7 @@ async function loadAdvPool(force){
   const key=advSelectionKey();
   if(!force && key===state.advLoadedKey && state.advPool.length) return;
   const s=currentSelection();
-  const qs=new URLSearchParams({
-    standards:s.standards.join(','),
-    include_user_rules:s.include_user_rules?1:0,
-    only_structured:el('rv-only').checked?1:0,
-    logic_only:el('rv-logic').checked?1:0,
-  });
+  const qs=rvRulesQuery(s);
   let pool=[];
   try{
     const r=await API('GET','/api/rules?'+qs.toString());
@@ -780,7 +1005,7 @@ async function setAdvOn(on){
   await loadAdvPool(true);
 }
 function onAdvToggle(d){ if(d.open && state.advOn) loadAdvPool(false); }
-function onFilterModeChange(){ if(state.advOn) loadAdvPool(true); }
+function onFilterModeChange(){ if(state.advOn) loadAdvPool(true); scheduleRvTotal(); }
 
 async function runReview(){
   let path=el('rv-path').value.trim();
@@ -790,6 +1015,7 @@ async function runReview(){
   if(!st.is_dir){toast('请选择目录而非文件','err');return;}
   const sel=currentSelection();
   const body={path,standards:sel.standards,include_user_rules:sel.include_user_rules,
+              subsets:sel.subsets,
               only_structured:el('rv-only').checked,logic_only:el('rv-logic').checked,format:el('rv-format').value};
   if(state.advOn){
     await loadAdvPool(false);                    // 确认规则池与当前检查集同步

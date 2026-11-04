@@ -4,6 +4,7 @@ from __future__ import annotations
 import glob
 import os
 import sys
+import warnings
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -29,6 +30,7 @@ class Rule:
     references: list = field(default_factory=list)
     confidence: float = 1.0
     source: str = "user"
+    tags: list = field(default_factory=list)      # 子集/自动化等级标签，如 ["STR", "auto"]
 
     def to_dict(self) -> dict:
         return {
@@ -38,6 +40,7 @@ class Rule:
             "fix_suggestion": self.fix_suggestion, "enabled": self.enabled,
             "match": self.match, "references": self.references,
             "confidence": self.confidence, "source": self.source,
+            "tags": list(self.tags),
         }
 
 
@@ -70,6 +73,7 @@ def validate_rule(d: dict) -> Rule:
         rationale=d.get("rationale", ""), fix_suggestion=d.get("fix_suggestion", ""),
         enabled=bool(d.get("enabled", True)), match=match, references=d.get("references", []),
         confidence=float(d.get("confidence", 1.0)), source=d.get("source", "user"),
+        tags=list(d.get("tags") or []),
     )
 
 
@@ -104,11 +108,108 @@ def load_standard_pack(pack_dir: str) -> tuple[list[Rule], dict]:
     return rules, manifest
 
 
-def load_pack_by_id(pack_id: str, standards_root: str) -> tuple[list[Rule], dict]:
+# --------------------------------------------------------------------------
+# Subsets（标准包内的规则子集）
+#
+# manifest.yaml 里这样声明：
+#   subsets:
+#     - {id: core,  name: 核心高危, tags: [core]}
+#     - {id: str,   name: 字符串 (STR), tags: [STR]}
+#     - {id: manual, name: 我挑的几条, rules: [STR31-C, MEM30-C]}
+# 规则侧用 tags 打标（如 tags: [STR, auto, core]）。
+# 命中规则：subset.rules 含该 id，或 subset.tags 与 rule.tags 有交集。
+# 既无 rules 又无 tags 的子集表示"本包全部规则"。
+# --------------------------------------------------------------------------
+def subset_index(manifest: dict) -> dict[str, dict]:
+    return {s.get("id"): s for s in (manifest.get("subsets") or []) if s.get("id")}
+
+
+def rule_matches_subset(rule: "Rule", subset: dict) -> bool:
+    ids = subset.get("rules") or []
+    tags = subset.get("tags") or []
+    if not ids and not tags:
+        return True
+    if rule.id in ids:
+        return True
+    if tags and set(tags) & set(rule.tags or []):
+        return True
+    return False
+
+
+def rule_subsets(rule: "Rule", manifest: dict) -> list[str]:
+    """这条规则属于哪些子集 id —— 供 UI 展示。"""
+    return [s["id"] for s in (manifest.get("subsets") or [])
+            if s.get("id") and rule_matches_subset(rule, s)]
+
+
+def filter_by_subsets(rules: list["Rule"], manifest: dict,
+                      subset_ids: list[str] | None = None) -> list["Rule"]:
+    """按启用的子集过滤规则。
+
+    `subset_ids=None` 表示「调用方没有指定」→ 优先用 manifest 的 `default_subsets`，
+    没有声明默认子集才返回全部规则（对老包保持向后兼容）。
+    显式传空列表表示「该包的子集一个都没选」→ 返回空。
+    """
+    defs = manifest.get("subsets") or []
+    if not defs:
+        return rules
+    if subset_ids is None:
+        defaults = manifest.get("default_subsets")
+        if not defaults:
+            return rules
+        subset_ids = list(defaults)
+    selected = [s for s in defs if s.get("id") in set(subset_ids)]
+    if not selected:
+        return []
+    return [r for r in rules if any(rule_matches_subset(r, s) for s in selected)]
+
+
+def parse_subset_specs(specs) -> dict[str, list[str]]:
+    """把 `PACK:ID[,ID]` 形式的子集写法解析成 `{pack_id: [subset_id, ...]}`。
+
+    CLI 的 `--subset` 与 Web 的 `?subset=` 共用这一套写法，避免两处各解析一遍：
+        --subset cert-c:core,STR --subset python:security
+        ?subset=cert-c:core,STR&subset=python:security
+    不带冒号的项忽略（CLI 侧另行报错）。
+    """
+    out: dict[str, list[str]] = {}
+    for spec in specs or []:
+        if not spec or ":" not in spec:
+            continue
+        pack, _, ids = spec.partition(":")
+        pack = pack.strip()
+        if not pack:
+            continue
+        out.setdefault(pack, []).extend([x.strip() for x in ids.split(",") if x.strip()])
+    return out
+
+
+def unknown_subsets(manifest: dict, subset_ids) -> list[str]:
+    """请求了但 manifest 里不存在的子集 id。
+
+    不做大小写/标签的模糊匹配——`STR` 是规则 tag、`str` 才是子集 id，静默把 `STR`
+    当成 `str` 会让「写错了」看起来像「本来就没有规则」。调用方拿到这个列表后
+    应当提示用户，而不是悄悄返回 0 条规则。
+    """
+    known = set(subset_index(manifest))
+    out = []
+    for sid in subset_ids or []:
+        if sid and sid not in known and sid not in out:
+            out.append(sid)
+    return out
+
+
+def load_pack_by_id(pack_id: str, standards_root: str,
+                    subsets: list[str] | None = None) -> tuple[list[Rule], dict]:
     pack_dir = os.path.join(standards_root, pack_id)
     if not os.path.isdir(pack_dir):
         raise FileNotFoundError(f"standard pack not found: {pack_id} (looked in {standards_root})")
-    return load_standard_pack(pack_dir)
+    rules, manifest = load_standard_pack(pack_dir)
+    bad = unknown_subsets(manifest, subsets)
+    if bad:
+        avail = ", ".join(s["id"] for s in (manifest.get("subsets") or []) if s.get("id"))
+        warnings.warn(f"标准包 {pack_id} 没有这些子集：{', '.join(bad)}（可用：{avail}）")
+    return filter_by_subsets(rules, manifest, subsets), manifest
 
 
 def list_packs(standards_root: str) -> list[dict]:
