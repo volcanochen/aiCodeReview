@@ -5,6 +5,8 @@ import json
 from collections import Counter, defaultdict
 from typing import Any
 
+from .. import __version__
+
 SEV_ORDER = ["critical", "high", "medium", "low", "info"]
 GATE_DEFAULT = ("critical", "high")
 
@@ -41,7 +43,7 @@ def render_text(report: dict) -> str:
     s = report["summary"]
     lines = []
     lines.append("=" * 72)
-    lines.append(" aiReview 本地代码审查报告")
+    lines.append(f" aiReview 本地代码审查报告  v{__version__}")
     lines.append("=" * 72)
     m = report["metadata"]
     lines.append(f" 项目     : {m.get('project', '-')}")
@@ -106,7 +108,7 @@ def render_sarif(report: dict) -> str:
         "$schema": "https://json.schemastore.org/sarif-2.1.0.json",
         "version": "2.1.0",
         "runs": [{
-            "tool": {"driver": {"name": "aiReview Code Review", "version": "0.1.0",
+            "tool": {"driver": {"name": "aiReview Code Review", "version": __version__,
                                 "rules": sarif_rules}},
             "results": results,
         }],

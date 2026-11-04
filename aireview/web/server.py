@@ -24,6 +24,7 @@ from urllib.parse import urlparse, parse_qs
 
 import yaml
 
+from .. import __version__
 from ..config import load_config, example_config_text
 from ..llm import LLMClient
 from ..parser.index import Index
@@ -115,13 +116,19 @@ class WebServer:
                 if not full.startswith(os.path.normpath(STATIC_DIR)) or not os.path.isfile(full):
                     self._send(404, b"not found", "text/plain; charset=utf-8")
                     return
+                ext = os.path.splitext(full)[1]
                 ctype = {
                     ".html": "text/html; charset=utf-8",
                     ".js": "application/javascript; charset=utf-8",
                     ".css": "text/css; charset=utf-8",
-                }.get(os.path.splitext(full)[1], "application/octet-stream")
+                }.get(ext, "application/octet-stream")
                 with open(full, "rb") as fh:
-                    self._send(200, fh.read(), ctype)
+                    data = fh.read()
+                # Inject the single-source version into the HTML shell so the
+                # browser tab title shows it without duplicating the number.
+                if ext in (".html", ".htm"):
+                    data = data.replace(b"{{VERSION}}", __version__.encode("utf-8"))
+                self._send(200, data, ctype)
 
             # -- routing ---------------------------------------------------
             def do_GET(self):
@@ -246,6 +253,7 @@ class WebServer:
         d["api_key_set"] = bool(cfg.api_key)
         d["root"] = self.root
         d["config_path"] = self.config_path
+        d["version"] = __version__
         return d
 
     def api_config_put(self, body: dict) -> dict:

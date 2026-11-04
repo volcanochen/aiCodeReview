@@ -16,6 +16,7 @@ import sys
 import time
 from datetime import datetime, timezone
 
+from . import __version__
 from .config import load_config, example_config_text, DEFAULT_ENDPOINT, DEFAULT_MODEL
 from .llm import LLMClient
 from .parser.index import Index
@@ -198,6 +199,7 @@ def build_parser() -> argparse.ArgumentParser:
     common.add_argument("--config", default=None, help="配置文件路径")
 
     p = argparse.ArgumentParser(prog="aireview", parents=[common], description="本地 AI 代码审查系统")
+    p.add_argument("--version", action="version", version=f"aiReview {__version__}")
     sub = p.add_subparsers(dest="cmd", required=True)
 
     pr = sub.add_parser("review", parents=[common], help="运行规则审查")
