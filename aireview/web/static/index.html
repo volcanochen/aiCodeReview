@@ -4,6 +4,7 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>aiReview 本地代码审查 v{{VERSION}}</title>
+<link rel="icon" href="data:,">
 <style>
   :root{
     --bg:#0d1117; --panel:#161b22; --panel2:#1c232c; --border:#30363d;
@@ -105,6 +106,26 @@
   .flex{display:flex;gap:10px;align-items:center}.between{justify-content:space-between}
   .hint{font-size:12px;color:var(--muted);margin-top:4px}
   .nowrap{white-space:nowrap}
+  /* 标准包 → 规则说明书 */
+  .rule-doc{border:1px solid var(--border);border-radius:8px;margin-bottom:6px;background:var(--panel2)}
+  .rule-doc>summary{cursor:pointer;padding:8px 10px;display:flex;gap:8px;align-items:center;font-size:12.5px;list-style:none}
+  .rule-doc>summary::-webkit-details-marker{display:none}
+  .rule-doc>summary:before{content:"▸";color:var(--muted);font-size:10px;transition:.15s}
+  .rule-doc[open]>summary:before{transform:rotate(90deg)}
+  .rule-doc[open]>summary{border-bottom:1px solid var(--border)}
+  .rule-doc .doc-body{padding:10px 12px 12px;font-size:12.5px;line-height:1.7;color:var(--text)}
+  .doc-row{margin-bottom:10px}
+  .doc-row:last-child{margin-bottom:0}
+  .doc-k{display:block;font-size:11px;color:var(--muted);letter-spacing:.4px;margin-bottom:3px}
+  .doc-row ol,.doc-row ul{margin:2px 0 0 18px;padding:0}
+  .doc-row li{margin-bottom:4px}
+  .doc-kv{display:grid;grid-template-columns:120px 1fr;gap:2px 10px;font-size:12px}
+  .doc-kv .k{color:var(--muted)}
+  .doc-kv .v{font-family:var(--mono);word-break:break-all}
+  pre.doc-pre{background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:8px;overflow:auto;font-size:11.5px;margin:4px 0 0;white-space:pre-wrap;word-break:break-all}
+  code.k{background:rgba(255,255,255,.07);padding:1px 5px;border-radius:4px;font-size:11.5px;font-family:var(--mono)}
+  .filter-in{flex:0 0 280px;width:280px;max-width:280px}
+
 </style>
 </head>
 <body>
@@ -272,7 +293,7 @@
           </div>
           <div class="hint">关闭时按上面的检查集整体运行；开启后只执行下方勾选的规则，未勾选的会被排除。规则池随检查集与「仅结构化 / 仅业务逻辑」实时刷新。</div>
           <div id="rv-adv-tools" style="display:none;margin-top:10px;align-items:center;gap:8px;flex-wrap:wrap">
-            <input type="text" id="rv-adv-q" placeholder="按名称 / id / 类型过滤…" oninput="renderAdvRules()" style="max-width:300px">
+            <input type="text" id="rv-adv-q" class="filter-in" placeholder="按名称 / id / 类型过滤…" oninput="renderAdvRules()">
             <button class="btn ghost sm" onclick="advSetAll(true)">全选</button>
             <button class="btn ghost sm" onclick="advSetAll(false)">全不选</button>
             <button class="btn ghost sm" onclick="advOnlySeverity('critical')">仅 critical</button>
@@ -319,7 +340,9 @@ const state={config:null,standards:[],rules:[],models:[],lastResult:null,
   advOn:false,           // 「高级配置 · 逐条选择规则」是否启用
   advPool:[],            // 当前检查集对应的规则池（由后端 /api/rules 返回）
   advExcluded:new Set(), // 被用户取消勾选的规则 id
-  advLoadedKey:''};      // 规则池对应的查询键，用于判断是否需要重新拉取
+  advLoadedKey:'',       // 规则池对应的查询键，用于判断是否需要重新拉取
+  packRules:{},          // 标准包 id → 规则说明书（懒加载缓存）
+  openPacks:new Set()};  // 当前展开的包 id（重渲染后要恢复）
 
 document.querySelectorAll('.tab').forEach(t=>t.onclick=()=>{
   document.querySelectorAll('.tab').forEach(x=>x.classList.remove('active'));
@@ -422,15 +445,115 @@ function renderStandards(){
     const on=enabled.includes(p.id);
     const uninstall = p.builtin ? '' : `<button class="btn danger sm" style="margin-left:10px" onclick="uninstallStandard('${p.id}')">卸载</button>`;
     const langs=(p.languages||[]).join('/');
-    return `<div class="flex between" style="padding:12px 0;border-bottom:1px solid var(--border)">
-      <div style="max-width:72%"><b>${p.name||p.id}</b> <span class="pill">${p.version||'?'}</span>${langs?` <span class="pill">${langs}</span>`:''}${p.builtin?' <span class="pill">内置</span>':''}<div class="muted" style="font-size:12px">${p.coverage_note||''}</div></div>
-      <div class="flex" style="align-items:center">
-        <label class="switch"><input type="checkbox" onchange="toggleStandard('${p.id}',this.checked)" ${on?'checked':''}><span class="slider"></span></label>
-        ${uninstall}
+    return `<div style="border-bottom:1px solid var(--border)">
+      <div class="flex between" style="padding:12px 0">
+        <div style="max-width:72%"><b>${p.name||p.id}</b> <span class="pill">${p.version||'?'}</span>${langs?` <span class="pill">${langs}</span>`:''}${p.builtin?' <span class="pill">内置</span>':''}<div class="muted" style="font-size:12px">${p.coverage_note||''}</div></div>
+        <div class="flex" style="align-items:center">
+          <button class="btn ghost sm" id="pk-btn-${p.id}" onclick="togglePackRules('${p.id}')">规则说明</button>
+          <label class="switch"><input type="checkbox" onchange="toggleStandard('${p.id}',this.checked)" ${on?'checked':''}><span class="slider"></span></label>
+          ${uninstall}
+        </div>
       </div>
+      <div id="pk-detail-${p.id}" style="display:none;padding:0 0 14px"></div>
     </div>`;
   }).join('');
+  // 启用/停用会整体重渲染，把之前展开的包重新展开
+  [...(state.openPacks||[])].forEach(id=>{
+    const b=el('pk-detail-'+id); if(b && b.style.display==='none') togglePackRules(id);
+  });
 }
+
+// ---------- 标准包 → 规则说明书 ----------
+async function togglePackRules(id){
+  const box=el('pk-detail-'+id), btn=el('pk-btn-'+id);
+  if(!box) return;
+  if(box.style.display!=='none'){
+    box.style.display='none'; btn.textContent='规则说明';
+    state.openPacks.delete(id); return;
+  }
+  box.style.display='block'; btn.textContent='收起';
+  state.openPacks.add(id);
+  if(state.packRules[id]){ renderPackRules(id); box.dataset.loaded='1'; return; }
+  if(box.dataset.loaded==='1') return;
+  box.innerHTML='<div class="muted" style="font-size:12px;padding:8px 0">加载中…</div>';
+  let d=null;
+  try{ d=await API('GET','/api/standards/'+encodeURIComponent(id)+'/rules'); }catch(e){ d={error:String(e)}; }
+  if(!d || d.error){
+    box.innerHTML=`<div class="banner fail">加载失败：${escapeHtml((d&&d.error)||'未知错误')}</div>`;
+    return;
+  }
+  state.packRules[id]=d; box.dataset.loaded='1'; renderPackRules(id);
+}
+
+function renderPackRules(id){
+  const box=el('pk-detail-'+id), d=state.packRules[id];
+  if(!box||!d) return;
+  const rules=d.rules||[];
+  const head=`<div class="hint" style="margin:0 0 10px">
+    ${escapeHtml(d.description||'')}${d.reference?` · <a href="${d.reference}" target="_blank" rel="noopener">规范原文</a>`:''}
+    <br>共 <b>${rules.length}</b> 条规则 · 语言：${escapeHtml((d.languages||[]).join(' / ')||'—')}
+  </div>
+  <div class="inline" style="gap:8px;margin-bottom:10px;flex-wrap:wrap">
+    <input type="text" class="input filter-in" id="pk-q-${id}" placeholder="按名称 / id / 说明过滤…" oninput="renderPackRuleList('${id}')">
+    <button class="btn ghost sm" onclick="expandAllRules('${id}',true)">全部展开</button>
+    <button class="btn ghost sm" onclick="expandAllRules('${id}',false)">全部收起</button>
+    <span class="muted" style="font-size:12px" id="pk-cnt-${id}"></span>
+  </div>
+  <div id="pk-list-${id}"></div>`;
+  box.innerHTML=head;
+  renderPackRuleList(id);
+}
+
+// 说明一个规则匹配器的实现逻辑（impl 由后端按引擎真实行为生成）
+function ruleDocHtml(r){
+  const im=r.impl||{};
+  const row=(k,v)=>v?`<div class="doc-row"><span class="doc-k">${k}</span>${v}</div>`:'';
+  const steps=(im.steps&&im.steps.length)
+    ? `<div class="doc-row"><span class="doc-k">实现逻辑</span><ol>${im.steps.map(s=>`<li>${escapeHtml(s)}</li>`).join('')}</ol></div>` : '';
+  const req=(im.requires&&im.requires.length)
+    ? row('运行前提', `<ul>${im.requires.map(s=>`<li>${escapeHtml(s)}</li>`).join('')}</ul>`) : '';
+  const params=im.params?Object.entries(im.params).filter(([k,v])=>v!==''&&v!==null&&v!==undefined&&v!==false&&!(Array.isArray(v)&&!v.length)&&!(typeof v==='object'&&!Array.isArray(v)&&!Object.keys(v).length))
+    .map(([k,v])=>{
+      const val=(typeof v==='object')?JSON.stringify(v,null,2):String(v);
+      const isLong=val.length>60||val.includes('\n');
+      return isLong
+        ? `<div class="doc-row"><span class="doc-k">参数 ${escapeHtml(k)}</span><pre class="doc-pre">${escapeHtml(val)}</pre></div>`
+        : `<div class="doc-row"><span class="doc-k">参数 ${escapeHtml(k)}</span><code class="k">${escapeHtml(val)}</code></div>`;
+    }).join(''):'';
+  const refs=(r.references||[]).map(u=>`<a href="${u}" target="_blank" rel="noopener">${escapeHtml(u)}</a>`).join('<br>');
+  const body=[
+    row('这条规则在查什么', escapeHtml(r.description||r.name||'')),
+    row('为什么这样规定', escapeHtml(r.rationale||'')),
+    row('一句话实现', `<b>${escapeHtml(im.summary||'')}</b><div class="muted" style="font-size:12px">匹配引擎：${escapeHtml(im.engine||r.type||'')} · 作用范围：${escapeHtml(im.target||'')}</div>`),
+    steps, req, params,
+    row('怎么修', escapeHtml(r.fix_suggestion||'')),
+    row('规范出处', refs),
+  ].join('');
+  return `<details class="rule-doc">
+    <summary>
+      <span class="badge sev-${r.severity}">${r.severity}</span>
+      <span style="flex:1;min-width:0"><b>${escapeHtml(r.name||r.id)}</b> <code style="font-size:11px;color:var(--muted)">${escapeHtml(r.id)}</code></span>
+      <span class="tag t-${r.type}">${r.type}</span>
+      <span class="tag">${escapeHtml(r.language||'')}</span>
+    </summary>
+    <div class="doc-body">${body}</div>
+  </details>`;
+}
+
+function renderPackRuleList(id){
+  const d=state.packRules[id], box=el('pk-list-'+id);
+  if(!d||!box) return;
+  const q=((el('pk-q-'+id)||{}).value||'').trim().toLowerCase();
+  const all=d.rules||[];
+  const shown=q?all.filter(r=>((r.name||'')+' '+(r.id||'')+' '+(r.description||'')+' '+(r.rationale||'')+' '+((r.impl||{}).summary||'')).toLowerCase().includes(q)):all;
+  box.innerHTML=shown.length?shown.map(ruleDocHtml).join(''):'<div class="empty" style="padding:18px">没有匹配的规则</div>';
+  const cnt=el('pk-cnt-'+id); if(cnt) cnt.textContent=`显示 ${shown.length} / ${all.length} 条`;
+}
+
+function expandAllRules(id,open){
+  document.querySelectorAll(`#pk-list-${id} details.rule-doc`).forEach(x=>{x.open=open;});
+}
+
 async function toggleStandard(id,on){
   const cur=state.config.enabled_standards||[];
   const next=on?[...new Set([...cur,id])]:cur.filter(x=>x!==id);

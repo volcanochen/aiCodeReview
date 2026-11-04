@@ -51,6 +51,156 @@ def _resolve(base: str, p: str) -> str:
     return p if os.path.isabs(p) else os.path.join(base, p)
 
 
+# ---------------------------------------------------------------------------
+# 规则「实现逻辑」说明
+#
+# 这些文案必须与 aireview/rules/engine.py 中的实际匹配行为一致，不能凭字段名
+# 想象。每一段的依据写在注释里，改引擎时请同步改这里。
+# ---------------------------------------------------------------------------
+_ENGINE_NAMES = {
+    "regex": "正则扫描（Python re）",
+    "ast_pattern": "AST 模式匹配（tree-sitter query）",
+    "graph": "图分析（符号表 / 调用图）",
+    "semantic": "本地模型语义判定（LLM）",
+}
+
+_GRAPH_ANALYZERS = {
+    "signal_safety": {
+        "title": "信号安全链式检查（signal_safety）",
+        "steps": [
+            "先定位信号处理函数：扫描注册点（signal / sigaction 等），得到处理函数清单。",
+            "以处理函数为起点，沿调用图做 BFS 展开（深度上限 max_depth，默认 8），支持跨模块。",
+            "展开过程中任何被调用的函数命中“非异步信号安全函数”集合即记为违规；"
+            "集合默认取引擎内置的 NON_SIGSAFE，规则可用 params.unsafe_functions 覆盖。",
+            "命中的函数名会去重后写进消息，并定位到处理函数定义行。",
+        ],
+        "requires": ["符号表 + 调用图索引（需要先建索引）"],
+    },
+    "logic_consistency": {
+        "title": "业务逻辑一致性交叉回归（logic_consistency）",
+        "steps": [
+            "第一趟：按模块把源码交给本地模型，推断该模块的业务职责、关键不变量与契约"
+            "（前置/后置条件、错误处理预期、状态机规则）。",
+            "第二趟：沿调用图取相互调用的模块对，把双方的源码与不变量一起交给模型，"
+            "判断调用方是否违背被调方契约（或反之），输出矛盾条目。",
+            "模块内部再做一次自检（不变量与实现是否自相矛盾）。",
+            "模型返回 JSON，只保留 contradictions 非空的条目，confidence 原样带入。",
+        ],
+        "requires": ["调用图索引", "本地模型在线（离线则该规则以 model_offline 跳过）"],
+    },
+}
+
+
+def _describe_impl(rule) -> dict:
+    """把一条规则翻译成「它到底怎么跑」的结构化说明。"""
+    m = getattr(rule, "match", {}) or {}
+    rtype = getattr(rule, "type", "")
+    lang = getattr(rule, "language", "multi") or "multi"
+    base = {"engine": _ENGINE_NAMES.get(rtype, rtype), "type": rtype, "language": lang}
+
+    if rtype == "regex":
+        scope = m.get("file_scope") or {}
+        scope_lang = scope.get("language") or "(不限)"
+        glob = scope.get("path_glob")
+        flags = "re.MULTILINE" + (" + re.IGNORECASE" if m.get("ignore_case") else "")
+        target = "文件语言 = %s" % scope_lang + ("，路径匹配 %s" % glob if glob else "")
+        steps = [
+            "按 file_scope 选中文件：语言过滤为 %s%s；all / multi / any / * / 留空 均表示不做语言过滤。"
+            % (scope_lang, "，且路径需 fnmatch 命中 %s" % glob if glob else ""),
+            "把整个文件内容作为一段文本，用 %s 编译正则后 finditer 全量扫描"
+            "——注意不是逐行匹配，跨行结构也能命中。" % flags,
+            "每个命中位置换算成起始/结束行号，截取该处代码片段作为 evidence。",
+            "消息模板渲染占位符：{{match}}（命中文本）、{{line_number}} / {{line}}（行号）。",
+        ]
+        base.update({
+            "summary": "在 %s 的文件上，用一条正则扫全文，命中即报。" % (scope_lang if scope_lang != "(不限)" else "所选语言"),
+            "target": target,
+            "steps": steps,
+            "params": {
+                "pattern": m.get("pattern", ""),
+                "message": m.get("message", ""),
+                "ignore_case": bool(m.get("ignore_case")),
+                "file_scope": scope,
+            },
+            "requires": [],
+        })
+        return base
+
+    if rtype == "ast_pattern":
+        base.update({
+            "summary": "用 tree-sitter 把 %s 源码解析成语法树，再用一条 query 匹配结构。" % lang,
+            "target": "文件语言 = %s" % (lang if lang.lower() not in ("all", "multi", "any", "*", "") else "任意"),
+            "steps": [
+                "按规则 language 挑出文件，用对应语言的 tree-sitter 解析器建语法树。",
+                "在该树上执行 match.query，取 @node 捕获作为命中节点，@name 捕获作为名字。",
+                "命中节点的起止行/列直接来自语法树位置，比正则更准（不受注释、换行影响）。",
+                "消息模板可用 {{name}} / {{fn}} 渲染捕获到的名字。",
+            ],
+            "params": {"query": m.get("query", ""), "message": m.get("message", "")},
+            "requires": ["对应语言的 tree-sitter 解析器（当前安装包仅内置 c / cpp）"],
+        })
+        return base
+
+    if rtype == "graph":
+        analyzer = m.get("analyzer", "")
+        info = _GRAPH_ANALYZERS.get(analyzer)
+        params = {}
+        for k in ("params", "context"):
+            if m.get(k):
+                params[k] = m.get(k)
+        if info:
+            base.update({
+                "summary": info["title"],
+                "target": "索引中的符号表与调用图（跨文件）",
+                "analyzer": analyzer,
+                "steps": info["steps"],
+                "params": params,
+                "requires": info["requires"],
+            })
+        else:
+            base.update({
+                "summary": "图分析：%s" % (analyzer or "(未指定 analyzer)"),
+                "target": "索引中的符号表与调用图（跨文件）",
+                "analyzer": analyzer,
+                "steps": [
+                    "引擎按 analyzer 名称分派到具体分析器；未知名称会报 unknown graph analyzer 并跳过该规则。",
+                    "已实现的分析器：signal_safety、logic_consistency。",
+                ],
+                "params": params,
+                "requires": ["对应分析器"],
+            })
+        return base
+
+    if rtype == "semantic":
+        ctx = m.get("context") or {}
+        cand = ctx.get("candidate_regex")
+        limit = ctx.get("limit", 50)
+        base.update({
+            "summary": "把候选函数源码交给本地模型，由模型判断是否违规。",
+            "target": "C / C++ 文件中的函数（semantic 目前只对 c/cpp 生效）",
+            "steps": [
+                "只扫描 c / cpp 文件，把文件按函数切分。",
+                "若配置了 candidate_regex，只保留函数体命中该正则的候选，"
+                "并按 limit（默认 %s）截断，避免一次调用模型太多次。" % limit,
+                "每个候选拼成提示词：规则 prompt + 函数源码 + 该函数的直接被调用者（callees），"
+                "要求模型只回 JSON。",
+                "模型返回 violation=true 时，用返回的 line / message / confidence 生成发现；"
+                "模型不可用则该规则整体以 model_offline 跳过（--only-structured 可显式跳过）。",
+            ],
+            "params": {
+                "candidate_regex": cand or "",
+                "limit": limit,
+                "prompt": (m.get("prompt") or "")[:400],
+            },
+            "requires": ["本地模型在线", "文件语言为 c / cpp"],
+        })
+        return base
+
+    base.update({"summary": "未知规则类型 %s" % rtype, "target": "—",
+                 "steps": [], "params": {}, "requires": []})
+    return base
+
+
 class WebServer:
     def __init__(self, host: str = "127.0.0.1", port: int = 8765,
                  root: str | None = None, config_path: str | None = None):
@@ -199,6 +349,10 @@ class WebServer:
                         only_structured=_flag("only_structured"),
                         logic_only=_flag("logic_only"),
                     ))
+                if p.startswith("/api/standards/") and p.endswith("/rules"):
+                    # /api/standards/<id>/rules —— 标准包规则详情（含实现逻辑）
+                    pid = p[len("/api/standards/"):-len("/rules")]
+                    return self._json(200, server.api_standard_rules(pid))
                 if p == "/api/models":
                     return self._json(200, server.api_models_get())
                 if p.startswith("/api/review/") and p.endswith("/download"):
@@ -434,6 +588,25 @@ class WebServer:
             d["source"] = r.source
             out.append(d)
         return out
+
+    def api_standard_rules(self, pack_id: str) -> dict:
+        """某个标准包的元信息 + 全部规则 + 每条规则的实现逻辑说明。
+
+        与启用状态无关——未启用的包也要能查看它有什么规则。
+        """
+        meta = next((p for p in list_packs(STANDARDS_ROOT) if p.get("id") == pack_id), None)
+        if meta is None:
+            return {"error": "未找到标准包：%s" % pack_id}
+        try:
+            rules, _ = load_pack_by_id(pack_id, STANDARDS_ROOT)
+        except FileNotFoundError:
+            return {"error": "标准包规则目录不存在：%s" % pack_id}
+        out = []
+        for r in rules:
+            d = r.to_dict()
+            d["impl"] = _describe_impl(r)
+            out.append(d)
+        return {**meta, "id": pack_id, "rules": out}
 
     def api_models_get(self) -> dict:
         cfg = self._load_cfg()
