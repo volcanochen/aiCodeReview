@@ -504,9 +504,15 @@ class WebServer:
 
         try:
             cfg = self._load_cfg()
+            # "standards" === null means "use the configured defaults"; an explicit
+            # list (even an empty one) means "run exactly these packs".
             standards = body.get("standards")
-            if standards:
-                cfg.enabled_standards = standards
+            if standards is not None:
+                cfg.enabled_standards = list(standards)
+            # Custom rules (from user_rules_dir) are a selectable set of their own.
+            # Default to True so older callers keep their previous behaviour.
+            include_user_rules = body.get("include_user_rules", True)
+            exclude_rules = set(body.get("exclude_rules") or [])
             if body.get("only_structured"):
                 cfg.only_structured = True
             if body.get("logic_only"):
@@ -526,9 +532,12 @@ class WebServer:
                 except FileNotFoundError:
                     pass
             try:
-                rules.extend(_lur(urd))
+                if include_user_rules:
+                    rules.extend(_lur(urd))
             except Exception:
                 pass
+            if exclude_rules:
+                rules = [r for r in rules if r.id not in exclude_rules]
             # In "only structured" mode, drop semantic (LLM) rules up front so they
             # are NOT reported as "skipped / model unreachable" — that banner must
             # only surface for a genuine model outage, not an intentional choice.

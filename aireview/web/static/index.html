@@ -259,7 +259,7 @@
           <div class="inline" style="margin-top:8px"><span class="switch"><input type="checkbox" id="rv-logic"><span class="slider"></span></span></div>
         </div>
       </div>
-      <label style="margin-top:10px">覆盖启用的标准包（默认使用配置）</label>
+      <label style="margin-top:10px">选择要运行的检查集（标准包 / 自定义规则；默认使用配置）</label>
       <div id="rv-standards" class="inline" style="flex-wrap:wrap"></div>
       <div style="margin-top:16px"><button class="btn" id="rv-run" onclick="runReview()">运行审查</button></div>
     </div>
@@ -505,7 +505,10 @@ async function saveRule(){
 function renderReviewStandards(){
   const box=el('rv-standards');
   const enabled=state.config.enabled_standards||[];
-  box.innerHTML=state.standards.map(p=>`<label class="inline" style="margin:0 12px 6px 0"><input type="checkbox" value="${p.id}" ${enabled.includes(p.id)?'checked':''}> ${p.name||p.id}</label>`).join('');
+  const userCount=(state.rules||[]).filter(r=>r.source==='user').length;
+  const userItem=`<label class="inline" style="margin:0 12px 6px 0;font-weight:600"><input type="checkbox" value="__user_rules__" checked> 自定义规则（${userCount} 条）</label>`;
+  const packs=state.standards.map(p=>`<label class="inline" style="margin:0 12px 6px 0"><input type="checkbox" value="${p.id}" ${enabled.includes(p.id)?'checked':''}> ${p.name||p.id}</label>`).join('');
+  box.innerHTML=userItem+packs;
 }
 async function runReview(){
   let path=el('rv-path').value.trim();
@@ -513,8 +516,10 @@ async function runReview(){
   const st=await API('GET','/api/fs/stat?path='+encodeURIComponent(path));
   if(!st.exists){toast('路径不存在：'+path,'err');return;}
   if(!st.is_dir){toast('请选择目录而非文件','err');return;}
-  const standards=[...document.querySelectorAll('#rv-standards input:checked')].map(cb=>cb.value);
-  const body={path,standards,only_structured:el('rv-only').checked,logic_only:el('rv-logic').checked,format:el('rv-format').value};
+  const vals=[...document.querySelectorAll('#rv-standards input:checked')].map(cb=>cb.value);
+  const include_user_rules=vals.includes('__user_rules__');
+  const standards=vals.filter(v=>v!=='__user_rules__');
+  const body={path,standards,include_user_rules,only_structured:el('rv-only').checked,logic_only:el('rv-logic').checked,format:el('rv-format').value};
   el('rv-run').disabled=true;
   const r=await API('POST','/api/review',body);
   if(!r.ok){toast('启动失败：'+(r.error||''),'err');el('rv-run').disabled=false;return;}
