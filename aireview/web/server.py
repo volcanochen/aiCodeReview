@@ -134,7 +134,9 @@ class WebServer:
             def do_GET(self):
                 u = urlparse(self.path)
                 p = u.path
-                q = parse_qs(u.query)
+                # keep_blank_values=True：`standards=` 必须被识别为「空列表」，
+                # 而不是「参数缺失」——否则勾掉所有标准包后会静默回落到配置默认值。
+                q = parse_qs(u.query, keep_blank_values=True)
                 if p == "/" or p.startswith("/static/"):
                     self._serve_static(p[len("/static/"):] if p.startswith("/static/") else p[1:])
                     return
@@ -178,7 +180,25 @@ class WebServer:
                 if p == "/api/standards":
                     return self._json(200, list_packs(STANDARDS_ROOT))
                 if p == "/api/rules":
-                    return self._json(200, server.api_rules_get())
+                    # 可选 query：standards=a,b（空串=一个包都不要）/
+                    # include_user_rules=0|1 / only_structured=0|1 / logic_only=0|1
+                    # 供运行页「逐条选择规则」面板取到与本次审查一致的规则池。
+                    def _flag(name, default=False):
+                        raw = q.get(name)
+                        if raw is None:
+                            return default
+                        return str(raw[0]).lower() not in ("0", "false", "no", "off", "")
+
+                    raw_std = q.get("standards")
+                    standards = None
+                    if raw_std is not None:
+                        standards = [s for s in raw_std[0].split(",") if s]
+                    return self._json(200, server.api_rules_get(
+                        standards=standards,
+                        include_user_rules=_flag("include_user_rules", True),
+                        only_structured=_flag("only_structured"),
+                        logic_only=_flag("logic_only"),
+                    ))
                 if p == "/api/models":
                     return self._json(200, server.api_models_get())
                 if p.startswith("/api/review/") and p.endswith("/download"):
@@ -379,19 +399,35 @@ class WebServer:
         shutil.rmtree(pack_dir)
         return {"ok": True, "id": pack_id}
 
-    def api_rules_get(self) -> list:
+    def api_rules_get(self, standards=None, include_user_rules: bool = True,
+                      only_structured: bool = False, logic_only: bool = False) -> list:
+        """返回规则列表。
+
+        `standards=None` 表示使用配置里的 `enabled_standards`；传列表（含空列表）
+        表示严格按该列表取包——这与 `_run_review` 的语义保持一致。
+
+        `only_structured` / `logic_only` 会做与 `_run_review` **同一套**过滤，这样
+        「逐条选择规则」面板展示的，就是本次审查真正会执行的规则池，不会出现
+        「勾了却没跑」的错位。
+        """
         cfg = self._load_cfg()
+        pack_ids = cfg.enabled_standards if standards is None else list(standards)
         rules = []
-        for rid in cfg.enabled_standards:
+        for rid in pack_ids:
             try:
                 rs, _ = load_pack_by_id(rid, STANDARDS_ROOT)
                 rules.extend(rs)
             except FileNotFoundError:
                 pass
-        try:
-            rules.extend(_lur(_resolve(self.root, cfg.user_rules_dir)))
-        except Exception:
-            pass
+        if include_user_rules:
+            try:
+                rules.extend(_lur(_resolve(self.root, cfg.user_rules_dir)))
+            except Exception:
+                pass
+        if only_structured:
+            rules = [r for r in rules if getattr(r, "type", "") != "semantic"]
+        if logic_only:
+            rules = [r for r in rules if getattr(r, "type", "") in ("graph", "semantic")]
         out = []
         for r in rules:
             d = r.to_dict()

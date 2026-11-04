@@ -253,14 +253,36 @@
           </select>
         </div>
         <div><label>仅结构化（跳过语义规则）</label>
-          <div class="inline" style="margin-top:8px"><span class="switch"><input type="checkbox" id="rv-only"><span class="slider"></span></span></div>
+          <div class="inline" style="margin-top:8px"><label class="switch"><input type="checkbox" id="rv-only" onchange="onFilterModeChange()"><span class="slider"></span></label></div>
         </div>
         <div><label>仅业务逻辑（跳过语法/正则规则）</label>
-          <div class="inline" style="margin-top:8px"><span class="switch"><input type="checkbox" id="rv-logic"><span class="slider"></span></span></div>
+          <div class="inline" style="margin-top:8px"><label class="switch"><input type="checkbox" id="rv-logic" onchange="onFilterModeChange()"><span class="slider"></span></label></div>
         </div>
       </div>
       <label style="margin-top:10px">选择要运行的检查集（标准包 / 自定义规则；默认使用配置）</label>
       <div id="rv-standards" class="inline" style="flex-wrap:wrap"></div>
+
+      <details id="rv-adv" style="margin-top:14px;border-top:1px solid var(--border);padding-top:12px" ontoggle="onAdvToggle(this)">
+        <summary style="cursor:pointer;font-weight:600;font-size:13px">高级配置 · 逐条选择规则</summary>
+        <div style="margin-top:12px">
+          <div class="inline">
+            <label class="switch"><input type="checkbox" id="rv-adv-on" onchange="setAdvOn(this.checked)"><span class="slider"></span></label>
+            <span style="font-size:13px">启用逐条选择</span>
+            <span class="muted" id="rv-adv-count" style="font-size:12px"></span>
+          </div>
+          <div class="hint">关闭时按上面的检查集整体运行；开启后只执行下方勾选的规则，未勾选的会被排除。规则池随检查集与「仅结构化 / 仅业务逻辑」实时刷新。</div>
+          <div id="rv-adv-tools" style="display:none;margin-top:10px;align-items:center;gap:8px;flex-wrap:wrap">
+            <input type="text" id="rv-adv-q" placeholder="按名称 / id / 类型过滤…" oninput="renderAdvRules()" style="max-width:300px">
+            <button class="btn ghost sm" onclick="advSetAll(true)">全选</button>
+            <button class="btn ghost sm" onclick="advSetAll(false)">全不选</button>
+            <button class="btn ghost sm" onclick="advOnlySeverity('critical')">仅 critical</button>
+            <button class="btn ghost sm" onclick="advReset()">恢复全选</button>
+          </div>
+          <div id="rv-adv-empty" class="empty" style="display:none;margin-top:10px"></div>
+          <div id="rv-adv-list" style="display:none;margin-top:10px;max-height:420px;overflow:auto"></div>
+        </div>
+      </details>
+
       <div style="margin-top:16px"><button class="btn" id="rv-run" onclick="runReview()">运行审查</button></div>
     </div>
     <div id="rv-result"></div>
@@ -293,7 +315,11 @@
 const API = (m,p,b)=>fetch(p,{method:m,headers:{'Content-Type':'application/json'},body:b?JSON.stringify(b):undefined}).then(r=>r.json().catch(()=>({error:'响应解析失败'})));
 function toast(msg,type='info'){const w=document.getElementById('toasts');const t=document.createElement('div');t.className='toast '+type;t.textContent=msg;w.appendChild(t);setTimeout(()=>{t.style.opacity='0';setTimeout(()=>t.remove(),300)},3000);}
 function el(id){return document.getElementById(id);}
-const state={config:null,standards:[],rules:[],models:[],lastResult:null};
+const state={config:null,standards:[],rules:[],models:[],lastResult:null,
+  advOn:false,           // 「高级配置 · 逐条选择规则」是否启用
+  advPool:[],            // 当前检查集对应的规则池（由后端 /api/rules 返回）
+  advExcluded:new Set(), // 被用户取消勾选的规则 id
+  advLoadedKey:''};      // 规则池对应的查询键，用于判断是否需要重新拉取
 
 document.querySelectorAll('.tab').forEach(t=>t.onclick=()=>{
   document.querySelectorAll('.tab').forEach(x=>x.classList.remove('active'));
@@ -509,17 +535,148 @@ function renderReviewStandards(){
   const userItem=`<label class="inline" style="margin:0 12px 6px 0;font-weight:600"><input type="checkbox" value="__user_rules__" checked> 自定义规则（${userCount} 条）</label>`;
   const packs=state.standards.map(p=>`<label class="inline" style="margin:0 12px 6px 0"><input type="checkbox" value="${p.id}" ${enabled.includes(p.id)?'checked':''}> ${p.name||p.id}</label>`).join('');
   box.innerHTML=userItem+packs;
+  // 检查集变化 → 逐条选择面板的规则池要跟着变
+  box.querySelectorAll('input[type=checkbox]').forEach(cb=>{
+    cb.onchange=()=>{ if(state.advOn) loadAdvPool(true); };
+  });
 }
+
+// ---------- 高级配置 · 逐条选择规则 ----------
+function currentSelection(){
+  const vals=[...document.querySelectorAll('#rv-standards input:checked')].map(cb=>cb.value);
+  return {include_user_rules:vals.includes('__user_rules__'),
+          standards:vals.filter(v=>v!=='__user_rules__')};
+}
+
+function advSelectionKey(){
+  const s=currentSelection();
+  return [s.standards.slice().sort().join(','), s.include_user_rules?1:0,
+          el('rv-only').checked?1:0, el('rv-logic').checked?1:0].join('|');
+}
+
+// 从后端拉取「与本次审查完全一致」的规则池（过滤逻辑在后端，避免前后端两套判断漂移）
+async function loadAdvPool(force){
+  const key=advSelectionKey();
+  if(!force && key===state.advLoadedKey && state.advPool.length) return;
+  const s=currentSelection();
+  const qs=new URLSearchParams({
+    standards:s.standards.join(','),
+    include_user_rules:s.include_user_rules?1:0,
+    only_structured:el('rv-only').checked?1:0,
+    logic_only:el('rv-logic').checked?1:0,
+  });
+  let pool=[];
+  try{
+    const r=await API('GET','/api/rules?'+qs.toString());
+    pool=Array.isArray(r)?r:(r&&r.rules)||[];
+  }catch(e){ pool=[]; }
+  state.advPool=pool;
+  // 规则池变化后：剔除已不存在的排除项；新出现的规则默认勾选
+  const ids=new Set(pool.map(r=>r.id));
+  state.advExcluded=new Set([...state.advExcluded].filter(id=>ids.has(id)));
+  state.advLoadedKey=key;
+  renderAdvRules();
+}
+
+// 分组显示名：nl-custom → 自定义规则；标准包 id → 包名（id）
+function advGroupLabel(g){
+  if(g==='nl-custom') return '自定义规则';
+  const p=(state.standards||[]).find(x=>x.id===g);
+  return (p&&p.name&&p.name!==g)?`${p.name}（${g}）`:g;
+}
+
+function renderAdvRules(){
+  const list=el('rv-adv-list'), empty=el('rv-adv-empty'), cnt=el('rv-adv-count');
+  const pool=state.advPool||[];
+  if(!pool.length){
+    list.style.display='none'; list.innerHTML='';
+    empty.style.display='block';
+    empty.textContent='当前检查集下没有可运行的规则（检查集为空，或已被「仅结构化 / 仅业务逻辑」过滤完）。';
+    cnt.textContent='';
+    return;
+  }
+  empty.style.display='none';
+  const q=(el('rv-adv-q').value||'').trim().toLowerCase();
+  const shown=q?pool.filter(r=>((r.name||'')+' '+(r.id||'')+' '+(r.type||'')+' '+(r.category||'')).toLowerCase().includes(q)):pool;
+  const groups={};
+  shown.forEach(r=>{const k=r.category||r.source||'其他';(groups[k]=groups[k]||[]).push(r);});
+  const keys=Object.keys(groups);
+  state.advGroups=groups; state.advGroupKeys=keys;
+  let html='';
+  keys.forEach((g,gi)=>{
+    const items=groups[g];
+    const gOn=items.filter(r=>!state.advExcluded.has(r.id)).length;
+    html+=`<div class="inline" style="width:100%;justify-content:space-between;margin:10px 0 6px 0">
+      <b style="font-size:12px">${advGroupLabel(g)} <span class="muted">已选 ${gOn} / ${items.length}</span></b>
+      <span class="nowrap"><button class="btn ghost sm" onclick="advGroupAll(${gi},true)">全选</button><button class="btn ghost sm" onclick="advGroupAll(${gi},false)">全不选</button></span>
+    </div>`;
+    items.forEach(r=>{
+      const on=!state.advExcluded.has(r.id);
+      const dis=r.enabled===false;
+      html+=`<label class="inline" style="display:flex;gap:8px;align-items:center;padding:5px 8px;border:1px solid var(--border);border-radius:6px;margin-bottom:4px;cursor:pointer;opacity:${dis?0.55:1}">
+        <input type="checkbox" ${on?'checked':''} ${dis?'disabled':''} onchange="advToggleOne('${r.id}',this.checked)">
+        <span class="badge sev-${r.severity}">${r.severity}</span>
+        <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis">
+          <b style="font-size:12px">${r.name||r.id}</b>
+          <code style="font-size:11px;color:var(--muted)">${r.id}</code>
+          <span class="tag t-${r.type}">${r.type}</span>
+          ${dis?'<span class="tag" style="color:var(--muted)">已在规则管理中停用</span>':''}
+        </span>
+      </label>`;
+    });
+  });
+  list.innerHTML=html; list.style.display='block';
+  cnt.textContent=`已选 ${pool.filter(r=>!state.advExcluded.has(r.id)).length} / ${pool.length} 条`;
+}
+
+function advToggleOne(id,on){ if(on) state.advExcluded.delete(id); else state.advExcluded.add(id); renderAdvRules(); }
+function advGroupAll(gi,on){
+  const items=(state.advGroups||{})[(state.advGroupKeys||[])[gi]]||[];
+  items.forEach(r=>{ on?state.advExcluded.delete(r.id):state.advExcluded.add(r.id); });
+  renderAdvRules();
+}
+function advSetAll(on){
+  (state.advPool||[]).forEach(r=>{ on?state.advExcluded.delete(r.id):state.advExcluded.add(r.id); });
+  renderAdvRules();
+}
+function advOnlySeverity(sev){
+  state.advExcluded=new Set((state.advPool||[]).filter(r=>r.severity!==sev).map(r=>r.id));
+  renderAdvRules();
+}
+function advReset(){ state.advExcluded=new Set(); renderAdvRules(); }
+
+async function setAdvOn(on){
+  state.advOn=on;
+  el('rv-adv-tools').style.display=on?'flex':'none';
+  if(!on){
+    el('rv-adv-list').style.display='none';
+    el('rv-adv-empty').style.display='none';
+    el('rv-adv-count').textContent='';
+    return;
+  }
+  await loadAdvPool(true);
+}
+function onAdvToggle(d){ if(d.open && state.advOn) loadAdvPool(false); }
+function onFilterModeChange(){ if(state.advOn) loadAdvPool(true); }
+
 async function runReview(){
   let path=el('rv-path').value.trim();
   if(!path){toast('请输入项目路径','err');return;}
   const st=await API('GET','/api/fs/stat?path='+encodeURIComponent(path));
   if(!st.exists){toast('路径不存在：'+path,'err');return;}
   if(!st.is_dir){toast('请选择目录而非文件','err');return;}
-  const vals=[...document.querySelectorAll('#rv-standards input:checked')].map(cb=>cb.value);
-  const include_user_rules=vals.includes('__user_rules__');
-  const standards=vals.filter(v=>v!=='__user_rules__');
-  const body={path,standards,include_user_rules,only_structured:el('rv-only').checked,logic_only:el('rv-logic').checked,format:el('rv-format').value};
+  const sel=currentSelection();
+  const body={path,standards:sel.standards,include_user_rules:sel.include_user_rules,
+              only_structured:el('rv-only').checked,logic_only:el('rv-logic').checked,format:el('rv-format').value};
+  if(state.advOn){
+    await loadAdvPool(false);                    // 确认规则池与当前检查集同步
+    const pool=state.advPool||[];
+    const excluded=[...state.advExcluded];
+    const remain=pool.filter(r=>!state.advExcluded.has(r.id)).length;
+    if(!pool.length){toast('逐条选择已开启，但当前检查集下没有规则','err');return;}
+    if(remain===0){toast('逐条选择已开启，请至少勾选一条规则','err');return;}
+    body.exclude_rules=excluded;
+  }
   el('rv-run').disabled=true;
   const r=await API('POST','/api/review',body);
   if(!r.ok){toast('启动失败：'+(r.error||''),'err');el('rv-run').disabled=false;return;}
