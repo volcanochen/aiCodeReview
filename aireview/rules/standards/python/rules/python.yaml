@@ -1,167 +1,511 @@
-# Python 编码标准包 — 规则定义（正则类型，适用于 .py）。
-# 每条规则映射到一个常见 Python 反模式 / 安全隐患。
+# Python 编码标准包 — 常见反模式与安全隐患（regex 类型，适用于 .py）
 - id: py-bare-except
-  name: "避免裸 except"
+  name: 避免裸 except
   severity: medium
   category: python
   type: regex
   language: python
-  description: "裸 except: 会捕获包括 KeyboardInterrupt/SystemExit 在内的所有异常，掩盖真实错误。"
-  rationale: "PEP 8: 永远不要使用裸 'except:'。"
-  fix_suggestion: "捕获具体的异常类型，如 except ValueError:，或在末尾保留 except Exception 并记录日志。"
+  description: 裸 except 会捕获包括 KeyboardInterrupt/SystemExit 在内的所有异常，掩盖真实错误。
+  rationale: 'PEP 8: 永远不要使用裸 ''except:''。'
+  fix_suggestion: 捕获具体的异常类型，如 except ValueError:，或在末尾保留 except Exception 并记录日志。
+  tags:
+  - errors
+  - core
   enabled: true
   match:
     pattern: 'except\s*:'
-    message: "使用了裸 except:（捕获所有异常，包括 KeyboardInterrupt/SystemExit）"
-    file_scope: {language: python, path_glob: "*.py"}
-  references: ["https://peps.python.org/pep-0008/#programming-recommendations"]
-
+    message: 使用了裸 except:（捕获所有异常，包括 KeyboardInterrupt/SystemExit）
+    file_scope: &id001
+      language: python
+      path_glob: '*.py'
+  references: []
 - id: py-broad-except
-  name: "避免捕获过于宽泛的 Exception"
+  name: 避免捕获过于宽泛的 Exception
   severity: medium
   category: python
   type: regex
   language: python
-  description: "except Exception / BaseException 会吞掉几乎所有错误，降低可观测性。"
-  rationale: "尽量只捕获预期会发生的异常类型。"
-  fix_suggestion: "仅捕获需要处理的特定异常，其余向上抛出或显式记录。"
+  description: except Exception / BaseException 会吞掉几乎所有错误，降低可观测性。
+  rationale: 尽量只捕获预期会发生的异常类型。
+  fix_suggestion: 仅捕获需要处理的特定异常，其余向上抛出或显式记录。
+  tags:
+  - errors
+  - core
   enabled: true
   match:
     pattern: 'except\s+(BaseException|Exception)\s*:'
-    message: "捕获了过于宽泛的 {{0}}，建议细化异常类型"
-    file_scope: {language: python, path_glob: "*.py"}
-
+    message: 捕获了过于宽泛的 {{match}}，建议细化异常类型
+    file_scope: *id001
+  references: []
+- id: py-except-pass
+  name: 不要在 except 中静默 pass
+  severity: medium
+  category: python
+  type: regex
+  language: python
+  description: 捕获异常后直接 pass 会让程序带着错误状态继续运行，问题难以定位。
+  rationale: 异常要么处理、要么记录日志、要么重新抛出。
+  fix_suggestion: 改为 logger.exception(...) 或 raise；确实要忽略时加注释说明原因。
+  tags:
+  - errors
+  - core
+  enabled: true
+  match:
+    pattern: except[^\n:]*:\s*(?:#[^\n]*)?\n\s+pass\b
+    message: except 分支里只有 pass，异常被静默吞掉
+    file_scope: *id001
+  references: []
+- id: py-raise-not-implemented
+  name: 不要抛 NotImplemented（应为 NotImplementedError）
+  severity: low
+  category: python
+  type: regex
+  language: python
+  description: NotImplemented 是用于二元运算的哨兵值，不是异常。
+  rationale: 抽象方法应抛 NotImplementedError。
+  fix_suggestion: 改为 raise NotImplementedError(...)。
+  tags:
+  - errors
+  enabled: true
+  match:
+    pattern: raise\s+NotImplemented\b
+    message: raise NotImplemented 会抛 TypeError，通常本意是 NotImplementedError
+    file_scope: *id001
+  references: []
 - id: py-mutable-default
-  name: "避免使用可变默认参数"
+  name: 避免使用可变默认参数
   severity: medium
   category: python
   type: regex
   language: python
-  description: "函数默认参数在定义时求值一次，可变对象（list/dict）会在多次调用间共享状态。"
-  rationale: "Python 默认参数绑定在 def 时而非调用时。"
-  fix_suggestion: "将默认值设为 None，在函数体内初始化：def f(x=None): x = x or []。"
+  description: 函数默认参数在定义时求值一次，可变对象（list/dict）会在多次调用间共享状态。
+  rationale: Python 默认参数绑定在 def 时而非调用时。
+  fix_suggestion: '将默认值设为 None，在函数体内初始化：def f(x=None): x = x or []。'
+  tags:
+  - bugs
+  - core
   enabled: true
   match:
-    pattern: 'def\s+[A-Za-z_]\w*\s*\([^)]*=\s*(\[\]|\{\})'
-    message: "检测到可变默认参数（list/dict），多次调用会共享同一对象"
-    file_scope: {language: python, path_glob: "*.py"}
-
+    pattern: def\s+[A-Za-z_]\w*\s*\([^)]*=\s*(\[\]|\{\})
+    message: 函数默认参数是可变对象，会在多次调用间共享状态
+    file_scope: *id001
+  references: []
+- id: py-mutable-class-attr
+  name: 不要在类属性里放可变对象
+  severity: medium
+  category: python
+  type: regex
+  language: python
+  description: 类级别的 list/dict 被所有实例共享，一处修改影响全部实例。
+  rationale: 实例状态应在 __init__ 里初始化。
+  fix_suggestion: 移到 __init__ 中赋值 self.x = []。
+  tags:
+  - bugs
+  - core
+  enabled: true
+  match:
+    pattern: ^class\s+\w+[\s\S]{0,600}?^\s{4}[A-Za-z_]\w*\s*=\s*(\[\]|\{\})
+    message: 类属性是可变对象，会被所有实例共享
+    file_scope: *id001
+  references: []
+- id: py-dict-iter-modify
+  name: 不要在遍历 dict 时修改它
+  severity: high
+  category: python
+  type: regex
+  language: python
+  description: 迭代过程中改变字典大小会让迭代器失效。
+  rationale: 先 list(d.items()) 复制再遍历，或收集待删键后统一删除。
+  fix_suggestion: '改为 for k in list(d): 或先收集再修改。'
+  tags:
+  - bugs
+  enabled: true
+  match:
+    pattern: for\s+\w+\s+in\s+(\w+)\.(?:keys|items|values)\(\)[\s\S]{0,200}?\b\1\s*\[[^\]]*\]\s*=(?!=)|\bdel\s+\1\s*\[
+    message: 遍历字典的同时修改它，会抛 RuntimeError
+    file_scope: *id001
+  references: []
 - id: py-eval-exec
-  name: "避免 eval / exec"
+  name: 避免使用 eval/exec
   severity: high
   category: python
   type: regex
   language: python
-  description: "eval/exec 会执行动态构造的代码，若输入包含不可信数据则存在代码注入风险。"
-  rationale: "动态执行字符串代码应尽量避免。"
-  fix_suggestion: "使用 ast.literal_eval 处理数据，或改用显式的解析/调度逻辑，杜绝执行任意代码。"
+  description: eval/exec 会执行任意代码，输入不可信时等同于远程代码执行。
+  rationale: 把字符串当代码执行是注入漏洞的直接来源。
+  fix_suggestion: 改用 ast.literal_eval 解析字面量，或用显式映射表代替。
+  tags:
+  - security
+  - core
   enabled: true
   match:
-    pattern: '\b(eval|exec)\s*\('
-    message: "使用了 eval/exec 执行动态代码，存在代码注入风险"
-    file_scope: {language: python, path_glob: "*.py"}
-
-- id: py-identity-bool
-  name: "避免与 True/False 做等值/身份比较"
-  severity: low
-  category: python
-  type: regex
-  language: python
-  description: "x == True / x is True 应直接用布尔上下文 if x: 表达。"
-  rationale: "显式比较布尔量既冗余又易错（例如 1 == True 为 True）。"
-  fix_suggestion: "直接用 if x: 判断真假，或与具体值比较时用 x is True 仅当需要区分布尔与非布尔。"
-  enabled: true
-  match:
-    pattern: '\b(is|==)\s+(True|False)\b'
-    message: "与 True/False 做比较（{{0}} {{1}}），建议直接用布尔上下文"
-    file_scope: {language: python, path_glob: "*.py"}
-
-- id: py-wildcard-import
-  name: "避免通配符导入"
-  severity: low
-  category: python
-  type: regex
-  language: python
-  description: "from module import * 会污染命名空间，降低可读性与静态分析能力。"
-  rationale: "PEP 8 不推荐通配符导入。"
-  fix_suggestion: "显式列出需要导入的名称：from module import a, b。"
-  enabled: true
-  match:
-    pattern: 'from\s+[A-Za-z_.]+\s+import\s+\*'
-    message: "使用了通配符导入（import *），污染命名空间"
-    file_scope: {language: python, path_glob: "*.py"}
-
-- id: py-assert-use
-  name: "生产代码慎用 assert"
-  severity: info
-  category: python
-  type: regex
-  language: python
-  description: "assert 在 Python 以 -O 优化运行时会被移除，不能用于输入校验等关键逻辑。"
-  rationale: "assert 仅为开发期契约检查。"
-  fix_suggestion: "对不可省略的校验改用显式 if + raise，而非 assert。"
-  enabled: true
-  match:
-    pattern: '^\s*assert\s'
-    message: "使用了 assert；生产环境（python -O）会跳过，请勿用于关键校验"
-    file_scope: {language: python, path_glob: "*.py"}
-
+    pattern: \b(eval|exec)\s*\(
+    message: 使用 {{match}} 执行动态代码，存在代码注入风险
+    file_scope: *id001
+  references: []
 - id: py-command-injection
-  name: "避免命令注入"
+  name: 避免 shell 命令注入
   severity: high
   category: python
   type: regex
   language: python
-  description: "os.system 或使用 shell=True 的 subprocess 调用，若命令拼接不可信输入则存在命令注入。"
-  rationale: "避免以 shell 解释器执行拼接命令。"
-  fix_suggestion: "使用 subprocess.run([cmd, arg, ...], shell=False)，不要拼接命令字符串，必要时白名单校验参数。"
+  description: os.system 与 shell=True 都会把字符串交给 shell 解释，用户输入中的 ; | $() 会被执行。
+  rationale: 把参数交给 shell 解释是命令注入的直接来源。
+  fix_suggestion: 用 subprocess.run([...], shell=False) 传列表参数，并校验输入。
+  tags:
+  - security
+  - core
   enabled: true
   match:
-    pattern: '(os\.system|subprocess\.[A-Za-z_]+\([^)]*shell\s*=\s*True)'
-    message: "存在命令执行且可能启用 shell（命令注入风险）"
-    file_scope: {language: python, path_glob: "*.py"}
-
+    pattern: (os\.system|subprocess\.[A-Za-z_]+\([^)]*shell\s*=\s*True)
+    message: 通过 shell 执行命令，拼接外部输入可被注入
+    file_scope: *id001
+  references: []
 - id: py-ssl-verify-false
-  name: "避免禁用 TLS 证书校验"
+  name: 不要关闭 TLS 证书校验
   severity: high
   category: python
   type: regex
   language: python
-  description: "verify=False 会关闭 TLS 证书校验，使 HTTPS 请求面临中间人攻击。"
-  rationale: "传输安全不应被关闭。"
-  fix_suggestion: "移除 verify=False，或为内部 CA 配置可信证书；仅测试环境才允许关闭。"
+  description: 关闭证书校验后，任何中间人都能解密或篡改流量。
+  rationale: 证书校验是 TLS 信任链的核心。
+  fix_suggestion: 删除 verify=False；内网自签证书应配置 verify=<ca_bundle_path>。
+  tags:
+  - security
+  - core
   enabled: true
   match:
-    pattern: 'verify\s*=\s*False'
-    message: "禁用了 TLS 证书校验（verify=False），存在中间人攻击风险"
-    file_scope: {language: python, path_glob: "*.py"}
-
+    pattern: verify\s*=\s*False
+    message: verify=False 关闭了证书校验，可被中间人攻击
+    file_scope: *id001
+  references: []
 - id: py-insecure-deserialization
-  name: "避免反序列化不可信数据"
+  name: 不要反序列化不可信数据
   severity: medium
   category: python
   type: regex
   language: python
-  description: "pickle/marshal.loads 会执行被序列化对象中的任意代码，反序列化不可信数据极其危险。"
-  rationale: "永远不要 unpickle 来自网络/文件的不可信数据。"
-  fix_suggestion: "改用 JSON 等安全格式；若必须用 pickle，确保数据来源可信并做签名校验。"
+  description: pickle 在反序列化时会按数据内容导入并调用任意可调用对象。
+  rationale: 反序列化不可信数据等同于执行任意代码。
+  fix_suggestion: 改用 json、protobuf 等纯数据格式；必须用 pickle 时加签名校验。
+  tags:
+  - security
+  - core
   enabled: true
   match:
-    pattern: '\b(pickle|marshal|cPickle)\.loads?\s*\('
-    message: "使用了 pickle/marshal.loads 反序列化，若数据不可信则存在任意代码执行风险"
-    file_scope: {language: python, path_glob: "*.py"}
-
-- id: py-debug-print
-  name: "清理调试输出"
+    pattern: \b(pickle|marshal|cPickle)\.loads?\s*\(
+    message: pickle/marshal 反序列化不可信数据可导致任意代码执行
+    file_scope: *id001
+  references: []
+- id: py-yaml-load
+  name: yaml.load 必须指定 SafeLoader
+  severity: high
+  category: python
+  type: regex
+  language: python
+  description: yaml.load 默认 Loader 在旧版本中可实例化任意 Python 对象。
+  rationale: yaml.load 的默认行为不安全。
+  fix_suggestion: 改用 yaml.safe_load(...) 或 yaml.load(..., Loader=yaml.SafeLoader)。
+  tags:
+  - security
+  - core
+  enabled: true
+  match:
+    pattern: yaml\.load\s*\((?![^)]*Loader)
+    message: yaml.load 未指定 Loader，可被构造为执行任意代码
+    file_scope: *id001
+  references: []
+- id: py-hardcoded-secret
+  name: 不要硬编码敏感信息
+  severity: critical
+  category: python
+  type: regex
+  language: python
+  description: 源码中的口令与密钥会随仓库和二进制泄漏，且无法轮换。
+  rationale: 敏感信息不应出现在源码中。
+  fix_suggestion: 改为从环境变量或密钥管理服务读取。
+  tags:
+  - security
+  - core
+  enabled: true
+  match:
+    pattern: (?i)\b(password|passwd|pwd|secret|api_key|apikey|access_key|token|private_key)\s*=\s*[\"'][^\"']{3,}[\"']
+    message: 疑似硬编码敏感信息 {{match}}
+    file_scope: *id001
+  references: []
+- id: py-requests-timeout
+  name: requests 调用应设置 timeout
+  severity: medium
+  category: python
+  type: regex
+  language: python
+  description: 默认没有超时，对端不响应时线程会被长期阻塞。
+  rationale: 网络调用必须有超时。
+  fix_suggestion: 添加 timeout=(3.05, 30) 之类的参数。
+  tags:
+  - security
+  - reliability
+  enabled: true
+  match:
+    pattern: requests\.(?:get|post|put|delete|patch|head|request)\s*\((?![^)]*timeout)
+    message: requests 调用未设置 timeout，可能永久挂起
+    file_scope: *id001
+  references: []
+- id: py-tempfile-mktemp
+  name: 不要使用 tempfile.mktemp
+  severity: high
+  category: python
+  type: regex
+  language: python
+  description: mktemp 只返回文件名而不创建文件，检查与使用之间可被抢占。
+  rationale: mktemp 已被标记为不安全。
+  fix_suggestion: 改用 tempfile.NamedTemporaryFile 或 mkstemp。
+  tags:
+  - security
+  enabled: true
+  match:
+    pattern: tempfile\.mktemp\s*\(
+    message: tempfile.mktemp 存在 TOCTOU 竞态，应改用 NamedTemporaryFile
+    file_scope: *id001
+  references: []
+- id: py-unsafe-random
+  name: 安全场景不要用 random 模块
+  severity: medium
+  category: python
+  type: regex
+  language: python
+  description: random 基于 Mersenne Twister，状态可从少量输出推断。
+  rationale: 安全用途必须使用密码学安全的随机源。
+  fix_suggestion: 改用 secrets 模块（secrets.token_hex / choice）。
+  tags:
+  - security
+  enabled: true
+  match:
+    pattern: \brandom\.(?:random|randint|choice|randrange|sample)\s*\(
+    message: random 模块不是密码学安全的随机源
+    file_scope: *id001
+  references: []
+- id: py-sql-string-build
+  name: 不要用字符串拼接构造 SQL
+  severity: high
+  category: python
+  type: regex
+  language: python
+  description: 把用户输入拼进 SQL 文本，参数内容会被当作语句解析。
+  rationale: SQL 必须使用参数化查询。
+  fix_suggestion: 改用 execute(sql, params) 的占位符形式（? 或 %s）。
+  tags:
+  - security
+  - core
+  enabled: true
+  match:
+    pattern: (?i)(?:execute|executemany)\s*\(\s*(?:f\"|f'|\"[^\"]*\"\s*%|'[^']*'\s*%|\"[^\"]*\"\s*\+|'[^']*'\s*\+|\"[^\"]*\"\s*\.format|'[^']*'\s*\.format)
+    message: SQL 由字符串拼接/f-string 构造，存在注入风险
+    file_scope: *id001
+  references: []
+- id: py-identity-bool
+  name: 不要用 == / is 比较布尔字面量
+  severity: low
+  category: python
+  type: regex
+  language: python
+  description: 与布尔字面量比较是冗余的，且 is 比较依赖单例实现。
+  rationale: PEP 8 要求直接用真值判断。
+  fix_suggestion: '改为 if x: 或 if not x:；判 None 用 is None。'
+  tags:
+  - style
+  enabled: true
+  match:
+    pattern: \b(is|==)\s+(True|False)\b
+    message: '与 True/False 比较应用 if x: / if not x:'
+    file_scope: *id001
+  references: []
+- id: py-wildcard-import
+  name: 避免 from x import *
+  severity: low
+  category: python
+  type: regex
+  language: python
+  description: import * 让名字来源不可追溯，静态检查失效。
+  rationale: PEP 8 不推荐通配符导入。
+  fix_suggestion: 显式列出需要的名字，或用 import module 后加前缀。
+  tags:
+  - style
+  enabled: true
+  match:
+    pattern: from\s+[A-Za-z_.]+\s+import\s+\*
+    message: 通配符导入会污染命名空间且掩盖未定义名字
+    file_scope: *id001
+  references: []
+- id: py-assert-use
+  name: 不要用 assert 做运行时校验
   severity: info
   category: python
   type: regex
   language: python
-  description: "遗留的 print() 调试输出会污染日志与 stdout。"
-  rationale: "生产代码应使用 logging 而非 print。"
-  fix_suggestion: "替换为 logging 模块，或删除调试用 print。"
+  description: assert 用于调试断言，python -O 会整体移除，不能承担输入校验。
+  rationale: assert 不是校验机制。
+  fix_suggestion: 对外部输入用显式 if + raise ValueError。
+  tags:
+  - bugs
   enabled: true
   match:
-    pattern: '\bprint\s*\('
-    message: "检测到 print() 调用，请确认是否需要保留（建议改用 logging）"
-    file_scope: {language: python, path_glob: "*.py"}
+    pattern: ^\s*assert\s
+    message: assert 在 -O 优化模式下会被移除
+    file_scope: *id001
+  references: []
+- id: py-debug-print
+  name: 生产代码避免裸 print 调试
+  severity: info
+  category: python
+  type: regex
+  language: python
+  description: print 无法分级、无法关闭、无上下文（时间/模块）。
+  rationale: 库代码不应直接 print。
+  fix_suggestion: 改用 logging.getLogger(__name__).info(...)。
+  tags:
+  - style
+  enabled: true
+  match:
+    pattern: \bprint\s*\(
+    message: 使用 print 输出，建议改用 logging
+    file_scope: *id001
+  references: []
+- id: py-comparison-none
+  name: 与 None 比较用 is
+  severity: low
+  category: python
+  type: regex
+  language: python
+  description: None 是单例，is 语义明确且更快；== 可能被 __eq__ 重载。
+  rationale: PEP 8 要求用 is None。
+  fix_suggestion: 改为 x is None / x is not None。
+  tags:
+  - style
+  enabled: true
+  match:
+    pattern: '[=!]=\s*None\b'
+    message: 与 None 比较应使用 is / is not
+    file_scope: *id001
+  references: []
+- id: py-type-check-eq
+  name: 类型判断用 isinstance
+  severity: medium
+  category: python
+  type: regex
+  language: python
+  description: type() 比较不考虑子类，且对 ABC/协议失效。
+  rationale: isinstance 才是正确的类型判断方式。
+  fix_suggestion: 改为 isinstance(x, T)。
+  tags:
+  - bugs
+  enabled: true
+  match:
+    pattern: type\s*\(\s*[\w.]+\s*\)\s*(?:==|is)\s*
+    message: 用 type(x) == T 判断类型，不支持继承
+    file_scope: *id001
+  references: []
+- id: py-open-no-encoding
+  name: open() 应显式指定 encoding
+  severity: medium
+  category: python
+  type: regex
+  language: python
+  description: 不同平台默认编码不同（Windows 常为 cp936），同一代码读写结果不一致。
+  rationale: 文本模式必须显式指定编码。
+  fix_suggestion: 改为 open(path, encoding='utf-8')。
+  tags:
+  - bugs
+  - core
+  enabled: true
+  match:
+    pattern: \bopen\s*\((?![^)]*encoding)(?![^)]*['\"][rb]{1,2}['\"])
+    message: open() 未指定 encoding，行为依赖平台默认编码
+    file_scope: *id001
+  references: []
+- id: py-subprocess-no-check
+  name: subprocess 调用应检查返回码
+  severity: medium
+  category: python
+  type: regex
+  language: python
+  description: 不检查返回码时，命令失败会被当作成功继续执行。
+  rationale: 外部命令失败必须被感知。
+  fix_suggestion: 加 check=True，或显式判断 result.returncode。
+  tags:
+  - reliability
+  enabled: true
+  match:
+    pattern: subprocess\.(?:run|call|check_output)\s*\((?![^)]*check\s*=\s*True)
+    message: subprocess 调用未设置 check=True，失败不会抛异常
+    file_scope: *id001
+  references: []
+- id: py-bare-raise-in-finally
+  name: finally 中不要 return/break
+  severity: medium
+  category: python
+  type: regex
+  language: python
+  description: finally 里跳转会丢弃正在传播的异常，掩盖真实错误。
+  rationale: finally 只应做清理。
+  fix_suggestion: 把 return 移到 finally 之外。
+  tags:
+  - bugs
+  - core
+  enabled: true
+  match:
+    pattern: finally\s*:\s*(?:[^\n]*\n\s*)*(?:return|break|continue)\b
+    message: finally 中的 return/break 会吞掉异常
+    file_scope: *id001
+  references: []
+- id: py-global-stmt
+  name: 避免使用 global
+  severity: low
+  category: python
+  type: regex
+  language: python
+  description: global 让函数产生隐藏副作用，难以推理与测试。
+  rationale: 显式传参或用类封装状态。
+  fix_suggestion: 改为传参、返回新值，或使用类/闭包持有状态。
+  tags:
+  - style
+  enabled: true
+  match:
+    pattern: ^\s*global\s+\w+
+    message: 使用 global 修改模块级状态，破坏可测试性
+    file_scope: *id001
+  references: []
+- id: py-todo-comment
+  name: 遗留 TODO/FIXME
+  severity: info
+  category: python
+  type: regex
+  language: python
+  description: 未完成的标记应进入任务系统，避免长期堆积在代码里。
+  rationale: 临时标记应可追踪。
+  fix_suggestion: 转为 issue 并在此处引用编号，或尽快完成。
+  tags:
+  - style
+  enabled: true
+  match:
+    pattern: (?i)#\s*(TODO|FIXME|XXX|HACK)\b
+    message: 代码中遗留 TODO/FIXME
+    file_scope: *id001
+  references: []
+- id: py-long-line
+  name: 单行过长（>120 列）
+  severity: info
+  category: python
+  type: regex
+  language: python
+  description: 过长行在评审与并排对比时难以阅读。
+  rationale: PEP 8 建议行长 ≤79，团队通常放宽到 100~120。
+  fix_suggestion: 按逻辑拆分表达式或提取变量。
+  tags:
+  - style
+  enabled: true
+  match:
+    pattern: ^.{121,}$
+    message: 该行超过 120 列
+    file_scope: *id001
+  references: []

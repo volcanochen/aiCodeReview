@@ -1,0 +1,115 @@
+# CERT C — MEM 类别
+- id: MEM30-C
+  name: 不要访问已释放的内存
+  severity: critical
+  category: cert-c
+  type: semantic
+  language: c
+  description: free 之后继续读写（含别名指针、悬垂指针），是典型的 use-after-free 漏洞。
+  rationale: CERT MEM30-C：已释放内存不可再访问。
+  fix_suggestion: 释放后立即把指针置 NULL；明确所有权，避免多处持有。
+  tags:
+  - MEM
+  - semantic
+  match:
+    prompt: 判断该函数是否存在 free 之后仍通过同一指针（或其别名）读写的情况。若存在，violation=true，line 填相对偏移，message 指出指针。
+    context:
+      candidate_regex: \bfree\s*\(|->
+      limit: 10
+  references:
+  - https://cmu-sei.github.io/secure-coding-standards/sei-cert-c-coding-standard/rules/memory-management-mem/
+- id: MEM31-C
+  name: 不再需要时释放动态分配的内存
+  severity: medium
+  category: cert-c
+  type: semantic
+  language: c
+  description: malloc/calloc/strdup 后未在所有路径上 free，长期运行会耗尽内存。
+  rationale: CERT MEM31-C：动态分配内存必须释放。
+  fix_suggestion: 统一出口释放；使用 goto cleanup 模式或封装成所有者对象。
+  tags:
+  - MEM
+  - semantic
+  match:
+    prompt: 判断该函数分配的内存是否在所有返回路径上都被释放（是否存在泄漏路径，或函数直接把分配结果丢弃）。若存在，violation=true，message 指出泄漏点。
+    context:
+      candidate_regex: \b(malloc|calloc|realloc|strdup)\s*\(
+      limit: 10
+  references:
+  - https://cmu-sei.github.io/secure-coding-standards/sei-cert-c-coding-standard/rules/memory-management-mem/
+- id: MEM33-C
+  name: 含柔性数组的结构体必须动态分配并整体拷贝
+  severity: medium
+  category: cert-c
+  type: semantic
+  language: c
+  description: 用 sizeof(struct) 分配含柔性数组的结构体会少分配尾部空间；赋值结构体也不会复制柔性数组。
+  rationale: CERT MEM33-C：柔性数组不包含在 sizeof 内，也不参与结构体赋值。
+  fix_suggestion: 按 sizeof(struct) + n*sizeof(elem) 分配，用 memcpy 复制内容。
+  tags:
+  - MEM
+  - semantic
+  match:
+    prompt: 判断该函数是否对含柔性数组的结构体只用 sizeof(struct) 分配内存，或用 = 赋值复制。若存在，violation=true。
+    context:
+      candidate_regex: \[\s*\]\s*;|sizeof
+      limit: 10
+  references:
+  - https://cmu-sei.github.io/secure-coding-standards/sei-cert-c-coding-standard/rules/memory-management-mem/
+- id: MEM34-C
+  name: 只释放动态分配的内存
+  severity: high
+  category: cert-c
+  type: regex
+  language: c
+  description: 对非堆地址（栈变量地址、字符串字面量、指针算术后的地址）调用 free 是未定义行为。
+  rationale: CERT MEM34-C：free 的参数必须是 malloc 族返回的指针。
+  fix_suggestion: 只 free 由 malloc/calloc/realloc/strdup 返回且未被偏移的指针。
+  tags:
+  - MEM
+  - heuristic
+  match:
+    pattern: \bfree\s*\(\s*(?:&|\w+\s*\+|"|[A-Za-z_]\w*\s*\[\s*\d+\s*\]\s*\+)
+    message: free 的参数不是堆分配返回的原始指针 {{match}}
+    file_scope: &id001
+      language: c
+      path_glob: '*.c'
+  references:
+  - https://cmu-sei.github.io/secure-coding-standards/sei-cert-c-coding-standard/rules/memory-management-mem/
+- id: MEM35-C
+  name: 为对象分配足够的内存
+  severity: high
+  category: cert-c
+  type: semantic
+  language: c
+  description: sizeof 用错（用指针大小而非元素大小、用错类型、漏乘元素个数）导致分配不足。
+  rationale: CERT MEM35-C：分配大小必须覆盖对象所需。
+  fix_suggestion: 用 sizeof(*p) * n 形式分配（sizeof 作用于解引用表达式）。
+  tags:
+  - MEM
+  - semantic
+  match:
+    prompt: 判断该函数在 malloc/calloc 中是否可能分配不足（sizeof 作用于指针、漏乘元素个数、类型与实际使用不符）。若存在，violation=true，message 指出表达式。
+    context:
+      candidate_regex: \b(malloc|calloc|realloc)\s*\(
+      limit: 10
+  references:
+  - https://cmu-sei.github.io/secure-coding-standards/sei-cert-c-coding-standard/rules/memory-management-mem/
+- id: MEM36-C
+  name: 不要通过 realloc 改变对象对齐
+  severity: low
+  category: cert-c
+  type: regex
+  language: c
+  description: realloc 后对返回值做偏移（如 +1）以“调整对齐”，会让 free 收到非原始指针并破坏对齐。
+  rationale: CERT MEM36-C：realloc 返回值必须按原样使用。
+  fix_suggestion: 保持 realloc 返回值原样，需要对齐用 aligned_alloc。
+  tags:
+  - MEM
+  - heuristic
+  match:
+    pattern: \brealloc\s*\([^;]*\)\s*[+-]
+    message: 对 realloc 返回值做了偏移运算
+    file_scope: *id001
+  references:
+  - https://cmu-sei.github.io/secure-coding-standards/sei-cert-c-coding-standard/rules/memory-management-mem/

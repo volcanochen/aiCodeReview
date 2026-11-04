@@ -1,0 +1,57 @@
+# CERT C — PRE 类别（自动生成后手工校订）
+- id: PRE30-C
+  name: 不要通过字符串拼接构造通用字符名（UCN）
+  severity: low
+  category: cert-c
+  type: regex
+  language: c
+  description: 把 \uXXXX 形式的通用字符名拆成两段字符串再拼接，可以让编译阶段的一致性检查失效，最终得到的字符与源码字面看起来的不同。
+  rationale: CERT PRE30-C 要求 UCN 不被拼接拆分，否则实现间的检查结果不一致。
+  fix_suggestion: 直接写完整的 UCN 或明确转义，不要在相邻字符串字面量之间拆开 \u。
+  tags:
+  - PRE
+  - heuristic
+  match:
+    pattern: \\u[0-9a-fA-F]{2,3}"\s*"
+    message: 疑似用字符串拼接拆分 UCN（第 {{line_number}} 行）
+    file_scope: &id001
+      language: c
+      path_glob: '*.c'
+  references:
+  - https://cmu-sei.github.io/secure-coding-standards/sei-cert-c-coding-standard/rules/preprocessor-pre/
+- id: PRE31-C
+  name: 避免在宏参数中传入带副作用的表达式
+  severity: medium
+  category: cert-c
+  type: regex
+  language: c
+  description: 若宏体多次展开同一个参数，MAX(i++, j) 这类带副作用的实参会求值多次，自增/赋值次数超出预期。
+  rationale: CERT PRE31-C：函数式宏的参数不保证只求值一次。
+  fix_suggestion: 先把带副作用的表达式求值到临时变量再传给宏，或改用内联函数。
+  tags:
+  - PRE
+  - heuristic
+  match:
+    pattern: \b[A-Z][A-Z0-9_]{2,}\s*\([^)\n]*(?:\+\+|--|=[^=])[^)\n]*\)
+    message: 宏调用 {{match}} 的实参含副作用（++/--/赋值），宏体多次展开时会重复求值
+    file_scope: *id001
+  references:
+  - https://cmu-sei.github.io/secure-coding-standards/sei-cert-c-coding-standard/rules/preprocessor-pre/
+- id: PRE32-C
+  name: 不要在函数式宏调用中使用预处理指令
+  severity: low
+  category: cert-c
+  type: regex
+  language: c
+  description: '在函数式宏调用的实参里写 #if / #include 等预处理指令，行为依赖实现扩展，标准未定义。'
+  rationale: CERT PRE32-C：预处理指令不能出现在宏调用的实参列表中。
+  fix_suggestion: 把预处理指令移到宏调用之外，或改用内联函数替代宏。
+  tags:
+  - PRE
+  - auto
+  match:
+    pattern: \b[A-Z_][A-Z0-9_]*\s*\([^)\n]*^\s*#\s*(?:if|ifdef|ifndef|include|define)
+    message: 函数式宏调用的实参中出现预处理指令
+    file_scope: *id001
+  references:
+  - https://cmu-sei.github.io/secure-coding-standards/sei-cert-c-coding-standard/rules/preprocessor-pre/

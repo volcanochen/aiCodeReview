@@ -1,0 +1,20 @@
+# CERT C++ — INT 类别
+- id: INT50-CPP
+  name: 不要转换为超出范围的枚举值
+  severity: medium
+  category: cert-cpp
+  type: semantic
+  language: cpp
+  description: 把整型强转为枚举类型，若值不在枚举定义范围内，行为未定义。
+  rationale: CERT C++ INT50-CPP：见规范原文。
+  fix_suggestion: 转换前校验取值，或用枚举类 + 显式映射。
+  tags:
+  - INT
+  - semantic
+  match:
+    prompt: 判断该函数是否把整型转换为可能超出范围的枚举值。若存在，violation=true。
+    context:
+      candidate_regex: static_cast<|\(\s*\w+\s*\)
+      limit: 8
+  references:
+  - https://cmu-sei.github.io/secure-coding-standards/sei-cert-cpp-coding-standard/rules/integers-int/

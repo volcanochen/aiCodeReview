@@ -1,0 +1,172 @@
+# CERT C++ — CTR 类别
+- id: CTR50-CPP
+  name: 容器下标与迭代器必须在有效范围内
+  severity: critical
+  category: cert-cpp
+  type: semantic
+  language: cpp
+  description: 越界下标或失效迭代器访问是未定义行为。
+  rationale: CERT C++ CTR50-CPP：见规范原文。
+  fix_suggestion: 用 at() 或先校验 size()；迭代器失效后不要复用。
+  tags:
+  - CTR
+  - semantic
+  match:
+    prompt: 判断该函数是否存在容器下标/迭代器可能越界或已失效的访问。若存在，violation=true，message 指出容器。
+    context:
+      candidate_regex: \[|\bbegin\(\)|\bend\(\)
+      limit: 8
+  references:
+  - https://cmu-sei.github.io/secure-coding-standards/sei-cert-cpp-coding-standard/rules/containers-ctr/
+- id: CTR51-CPP
+  name: 使用有效引用、指针、迭代器引用容器元素
+  severity: high
+  category: cert-cpp
+  type: semantic
+  language: cpp
+  description: 容器扩容/删除后旧引用、指针、迭代器全部失效。
+  rationale: CERT C++ CTR51-CPP：见规范原文。
+  fix_suggestion: 扩容前预留容量，或在修改后重新获取。
+  tags:
+  - CTR
+  - semantic
+  match:
+    prompt: 判断该函数是否在容器被修改（push_back/insert/erase）后继续使用之前取得的引用或迭代器。若存在，violation=true。
+    context:
+      candidate_regex: push_back|insert|erase
+      limit: 8
+  references:
+  - https://cmu-sei.github.io/secure-coding-standards/sei-cert-cpp-coding-standard/rules/containers-ctr/
+- id: CTR52-CPP
+  name: 保证库函数不会溢出
+  severity: high
+  category: cert-cpp
+  type: semantic
+  language: cpp
+  description: 把错误长度传给 memcpy/strcpy 等导致写越界。
+  rationale: CERT C++ CTR52-CPP：见规范原文。
+  fix_suggestion: 校验长度与目标容量后再调用。
+  tags:
+  - CTR
+  - semantic
+  match:
+    prompt: 判断该函数调用内存/字符串库函数时是否可能超出目标缓冲区。若存在，violation=true。
+    context:
+      candidate_regex: memcpy|strcpy|strncpy|copy
+      limit: 8
+  references:
+  - https://cmu-sei.github.io/secure-coding-standards/sei-cert-cpp-coding-standard/rules/containers-ctr/
+- id: CTR53-CPP
+  name: 使用有效的迭代器区间
+  severity: high
+  category: cert-cpp
+  type: semantic
+  language: cpp
+  description: 把 first/last 顺序颠倒或来自不同容器，是未定义行为。
+  rationale: CERT C++ CTR53-CPP：见规范原文。
+  fix_suggestion: 确保 first 可达 last 且属同一容器。
+  tags:
+  - CTR
+  - semantic
+  match:
+    prompt: 判断该函数是否向算法传入了非法迭代器区间（顺序颠倒或跨容器）。若存在，violation=true。
+    context:
+      candidate_regex: std::(sort|find|copy|transform)|\.begin\(\)
+      limit: 8
+  references:
+  - https://cmu-sei.github.io/secure-coding-standards/sei-cert-cpp-coding-standard/rules/containers-ctr/
+- id: CTR54-CPP
+  name: 不要对不同容器的迭代器做减法
+  severity: medium
+  category: cert-cpp
+  type: semantic
+  language: cpp
+  description: 跨容器迭代器相减未定义。
+  rationale: CERT C++ CTR54-CPP：见规范原文。
+  fix_suggestion: 改用下标或 std::distance 并确认同容器。
+  tags:
+  - CTR
+  - semantic
+  match:
+    prompt: 判断该函数是否对不同容器的迭代器做减法。若存在，violation=true。
+    context:
+      candidate_regex: std::distance|-
+      limit: 8
+  references:
+  - https://cmu-sei.github.io/secure-coding-standards/sei-cert-cpp-coding-standard/rules/containers-ctr/
+- id: CTR55-CPP
+  name: 迭代器加法溢出检查
+  severity: medium
+  category: cert-cpp
+  type: semantic
+  language: cpp
+  description: 对迭代器做加法可能越界或溢出。
+  rationale: CERT C++ CTR55-CPP：见规范原文。
+  fix_suggestion: 用 += 前先检查剩余距离。
+  tags:
+  - CTR
+  - semantic
+  match:
+    prompt: 判断该函数是否对迭代器做了可能越界的加法。若存在，violation=true。
+    context:
+      candidate_regex: iterator|begin\(\)
+      limit: 8
+  references:
+  - https://cmu-sei.github.io/secure-coding-standards/sei-cert-cpp-coding-standard/rules/containers-ctr/
+- id: CTR56-CPP
+  name: 不要对多态对象做指针算术
+  severity: high
+  category: cert-cpp
+  type: semantic
+  language: cpp
+  description: 多态对象的指针算术会按基类大小步进，得到错误地址。
+  rationale: CERT C++ CTR56-CPP：见规范原文。
+  fix_suggestion: 改用容器索引或 std::next 配合已知类型。
+  tags:
+  - CTR
+  - semantic
+  match:
+    prompt: 判断该函数是否对多态类指针做算术运算。若存在，violation=true。
+    context:
+      candidate_regex: \+|\+\+
+      limit: 8
+  references:
+  - https://cmu-sei.github.io/secure-coding-standards/sei-cert-cpp-coding-standard/rules/containers-ctr/
+- id: CTR57-CPP
+  name: 提供有效的排序谓词
+  severity: high
+  category: cert-cpp
+  type: semantic
+  language: cpp
+  description: 谓词不满足严格弱序（如用了 <=）会让排序行为未定义或崩溃。
+  rationale: CERT C++ CTR57-CPP：见规范原文。
+  fix_suggestion: 谓词必须用 <，保证不可自反、传递。
+  tags:
+  - CTR
+  - semantic
+  match:
+    prompt: 判断该函数传给 sort/set/map 的比较谓词是否使用 <= 或 >=（违反严格弱序）。若存在，violation=true。
+    context:
+      candidate_regex: sort|std::less|operator\(\)
+      limit: 8
+  references:
+  - https://cmu-sei.github.io/secure-coding-standards/sei-cert-cpp-coding-standard/rules/containers-ctr/
+- id: CTR58-CPP
+  name: 谓词函数对象不应可变
+  severity: low
+  category: cert-cpp
+  type: semantic
+  language: cpp
+  description: 带可变状态的谓词在不同实现下结果不同。
+  rationale: CERT C++ CTR58-CPP：见规范原文。
+  fix_suggestion: operator() 声明为 const，谓词保持无状态。
+  tags:
+  - CTR
+  - semantic
+  match:
+    prompt: 判断该谓词的 operator() 是否修改了自身状态或未声明 const。若存在，violation=true。
+    context:
+      candidate_regex: operator\(\)
+      limit: 8
+  references:
+  - https://cmu-sei.github.io/secure-coding-standards/sei-cert-cpp-coding-standard/rules/containers-ctr/

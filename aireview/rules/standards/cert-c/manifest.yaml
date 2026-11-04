@@ -1,12 +1,110 @@
 id: cert-c
 builtin: true
 languages: [c]
-name: "CERT C Rule Pack (automated subset)"
-version: "0.1.0"
+name: "CERT C 安全编码标准（全集）"
+version: "1.0.0"
 description: >-
-  CERT C 编码标准的可自动化高价值子集。覆盖危险函数调用、非重入/信号处理安全、
-  格式化风险等。需要语义判断的规则标记为 semantic（需本地模型支持）。
-reference: "https://wiki.sei.cmu.edu/confluence/display/c/SEI+CERT+C+Coding+Standard"
+  SEI CERT C 编码标准的完整规则集：官方在线版列出的 122 条规则全部收录，按 PRE / DCL / EXP / INT / FLP / ARR /
+  STR / MEM / FIO / ENV / SIG / ERR / CON / MSC / POS / WIN 16 个类别组织。规则以静态模式（正则 /
+  tree-sitter / 调用图）与本地模型语义判定两种方式实现，每条规则的检测方式与局限都写在「规则说明」里。
+reference: "https://cmu-sei.github.io/secure-coding-standards/sei-cert-c-coding-standard/"
 coverage_note: >-
-  CERT C 共 100+ 条规则，本包仅纳入可静态自动化的高价值子集；依赖运行行为或深层
-  语义的规则未纳入，或显式标注为 semantic 类型，需本地模型参与判定。
+  收录官方在线版全部 122 条规则（2016 版书籍为 98 条，在线版持续增补）。其中 36 条可完全静态判定，
+  1 条走调用图（SIG30-C），其余 85 条需要语义判断、由本地模型执行，行级定位精度低于静态规则。
+  建议日常先跑「核心高危」或「纯静态」子集，需要全面核查时再选「全集」。
+# 未显式配置 enabled_subsets 时使用的子集
+default_subsets: [core]
+subsets:
+  - id: all
+    name: "全集（122 条）"
+    description: "全部规则，含 85 条需本地模型的语义规则，跑全量耗时较长。"
+
+  - id: core
+    name: "核心高危（推荐）"
+    description: "高信号、误报低的规则；以静态规则为主，仅含 7 条需模型的语义规则（候选上限各 10 个函数）。"
+    rules:
+      # —— 静态（正则 / 调用图）——
+      - PRE31-C
+      - DCL37-C
+      - DCL41-C
+      - EXP45-C
+      - INT33-C
+      - INT34-C
+      - FLP30-C
+      - STR30-C
+      - STR38-C
+      - MEM34-C
+      - FIO30-C
+      - FIO34-C
+      - ENV30-C
+      - ENV33-C
+      - ERR34-C
+      - CON37-C
+      - MSC30-C
+      - MSC41-C
+      - POS34-C
+      - POS44-C
+      - POS47-C
+      - SIG30-C
+      # —— 语义（本地模型，最关键的 7 条）——
+      - EXP34-C
+      - ARR30-C
+      - STR31-C
+      - MEM30-C
+      - FIO45-C
+      - ERR33-C
+      - CON43-C
+
+  - id: static
+    name: "纯静态（不依赖模型）"
+    description: "全部无需本地模型即可判定的规则（正则 / AST / 调用图），离线可用、结果可复现。"
+    tags: [auto, heuristic, graph]
+
+  - id: pre
+    name: "预处理器 (PRE)"
+    tags: [PRE]
+  - id: dcl
+    name: "声明与初始化 (DCL)"
+    tags: [DCL]
+  - id: exp
+    name: "表达式 (EXP)"
+    tags: [EXP]
+  - id: int
+    name: "整数 (INT)"
+    tags: [INT]
+  - id: flp
+    name: "浮点 (FLP)"
+    tags: [FLP]
+  - id: arr
+    name: "数组 (ARR)"
+    tags: [ARR]
+  - id: str
+    name: "字符与字符串 (STR)"
+    tags: [STR]
+  - id: mem
+    name: "内存管理 (MEM)"
+    tags: [MEM]
+  - id: fio
+    name: "输入输出 (FIO)"
+    tags: [FIO]
+  - id: env
+    name: "环境 (ENV)"
+    tags: [ENV]
+  - id: sig
+    name: "信号 (SIG)"
+    tags: [SIG]
+  - id: err
+    name: "错误处理 (ERR)"
+    tags: [ERR]
+  - id: con
+    name: "并发 (CON)"
+    tags: [CON]
+  - id: msc
+    name: "杂项 (MSC)"
+    tags: [MSC]
+  - id: pos
+    name: "POSIX (POS)"
+    tags: [POS]
+  - id: win
+    name: "Microsoft Windows (WIN)"
+    tags: [WIN]

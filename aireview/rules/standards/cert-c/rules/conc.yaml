@@ -1,0 +1,249 @@
+# CERT C — CON 类别
+- id: CON30-C
+  name: 清理线程私有存储
+  severity: medium
+  category: cert-c
+  type: semantic
+  language: c
+  description: pthread_key_create 创建的键未 delete，或线程退出时未释放私有数据，造成泄漏。
+  rationale: CERT CON30-C：线程私有存储必须清理。
+  fix_suggestion: 在销毁前调用 pthread_key_delete，并在析构回调中释放内存。
+  tags:
+  - CON
+  - semantic
+  match:
+    prompt: 判断该函数创建了线程私有键或设置了私有数据，但缺少对应的 delete/释放。若存在，violation=true。
+    context:
+      candidate_regex: \bpthread_key_(create|set|delete)\b
+      limit: 10
+  references:
+  - https://cmu-sei.github.io/secure-coding-standards/sei-cert-c-coding-standard/rules/concurrency-con/
+- id: CON31-C
+  name: 不要销毁仍处于锁定状态的互斥量
+  severity: high
+  category: cert-c
+  type: semantic
+  language: c
+  description: 销毁被锁定的 mutex 会留下永久不可用的锁，其他线程再等待即未定义行为。
+  rationale: CERT CON31-C：mutex 必须先解锁再销毁。
+  fix_suggestion: 确保 unlock 之后再 destroy；用 RAII 保证配对。
+  tags:
+  - CON
+  - semantic
+  match:
+    prompt: 判断该函数是否在未 pthread_mutex_unlock 的情况下调用了 pthread_mutex_destroy。若存在，violation=true，message 指出互斥量。
+    context:
+      candidate_regex: \bpthread_mutex_(lock|unlock|destroy)\b
+      limit: 10
+  references:
+  - https://cmu-sei.github.io/secure-coding-standards/sei-cert-c-coding-standard/rules/concurrency-con/
+- id: CON32-C
+  name: 防止多线程访问位域的数据竞争
+  severity: medium
+  category: cert-c
+  type: semantic
+  language: c
+  description: 多个位域共享同一存储单元，对不同位域的并发写会互相覆盖。
+  rationale: CERT CON32-C：位域不是独立存储单元。
+  fix_suggestion: 把需要并发访问的字段拆成独立变量，或用互斥量/原子操作保护。
+  tags:
+  - CON
+  - semantic
+  match:
+    prompt: 判断该函数是否在持锁之外并发写入同一结构体的不同位域。若存在，violation=true。
+    context:
+      candidate_regex: ->\s*\w+\s*=[^=]
+      limit: 10
+  references:
+  - https://cmu-sei.github.io/secure-coding-standards/sei-cert-c-coding-standard/rules/concurrency-con/
+- id: CON33-C
+  name: 使用库函数时避免竞态条件
+  severity: high
+  category: cert-c
+  type: semantic
+  language: c
+  description: strtok、localtime、rand、getenv 等使用内部静态状态，多线程下互相干扰。
+  rationale: CERT CON33-C：这些库函数不是线程安全的。
+  fix_suggestion: 改用 _r 版本（strtok_r、localtime_r）或加锁。
+  tags:
+  - CON
+  - semantic
+  match:
+    prompt: 判断该函数是否在多线程上下文中调用了非线程安全的库函数（strtok/localtime/gmtime/rand/asctime/getenv）。若存在，violation=true，message 指出函数。
+    context:
+      candidate_regex: \b(strtok|localtime|gmtime|rand|asctime|getenv)\s*\(
+      limit: 10
+  references:
+  - https://cmu-sei.github.io/secure-coding-standards/sei-cert-c-coding-standard/rules/concurrency-con/
+- id: CON34-C
+  name: 跨线程共享的对象必须有合适的存储期
+  severity: high
+  category: cert-c
+  type: semantic
+  language: c
+  description: 把线程函数栈上的对象地址传给其他线程，线程返回后该地址失效。
+  rationale: CERT CON34-C：共享对象存储期必须覆盖使用期。
+  fix_suggestion: 共享数据用堆分配或使用方持有的缓冲区。
+  tags:
+  - CON
+  - semantic
+  match:
+    prompt: 判断该函数是否把局部变量地址传给了其他线程（pthread_create 参数、队列、全局指针）。若存在，violation=true。
+    context:
+      candidate_regex: \bpthread_create\s*\(
+      limit: 10
+  references:
+  - https://cmu-sei.github.io/secure-coding-standards/sei-cert-c-coding-standard/rules/concurrency-con/
+- id: CON35-C
+  name: 按固定顺序加锁以避免死锁
+  severity: high
+  category: cert-c
+  type: semantic
+  language: c
+  description: 两个函数以不同顺序获取同一组锁，构成经典 ABBA 死锁。
+  rationale: CERT CON35-C：多锁必须全局一致的加锁顺序。
+  fix_suggestion: 为锁定义全局唯一序号，始终按序加锁。
+  tags:
+  - CON
+  - semantic
+  match:
+    prompt: 判断该函数是否存在多把互斥量的加锁顺序与其他位置相反的可能。若存在，violation=true，message 说明顺序。
+    context:
+      candidate_regex: \bpthread_mutex_lock\b
+      limit: 10
+  references:
+  - https://cmu-sei.github.io/secure-coding-standards/sei-cert-c-coding-standard/rules/concurrency-con/
+- id: CON36-C
+  name: 可能虚假唤醒的等待函数必须放在循环中
+  severity: medium
+  category: cert-c
+  type: semantic
+  language: c
+  description: pthread_cond_wait 可能无信号返回；用 if 判断条件会继续执行未满足的分支。
+  rationale: CERT CON36-C：条件等待必须用 while 循环重检条件。
+  fix_suggestion: 改为 while (!cond) pthread_cond_wait(...)。
+  tags:
+  - CON
+  - semantic
+  match:
+    prompt: 判断该函数是否用 if 包裹 pthread_cond_wait 而非 while 循环重检条件。若存在，violation=true。
+    context:
+      candidate_regex: \bpthread_cond_wait\b
+      limit: 10
+  references:
+  - https://cmu-sei.github.io/secure-coding-standards/sei-cert-c-coding-standard/rules/concurrency-con/
+- id: CON37-C
+  name: 多线程程序中不要调用 signal()
+  severity: medium
+  category: cert-c
+  type: regex
+  language: c
+  description: signal() 在多线程进程中的语义由实现定义，信号可能被任意线程接收。
+  rationale: CERT CON37-C：多线程程序应使用 sigaction 并有明确的接收线程。
+  fix_suggestion: 改用 sigaction，并用 sigwait/signalfd 在专用线程处理。
+  tags:
+  - CON
+  - heuristic
+  match:
+    pattern: \bsignal\s*\(
+    message: 在多线程程序中使用 signal()，信号接收线程不确定
+    file_scope:
+      language: c
+      path_glob: '*.c'
+  references:
+  - https://cmu-sei.github.io/secure-coding-standards/sei-cert-c-coding-standard/rules/concurrency-con/
+- id: CON38-C
+  name: 使用条件变量时保证线程安全与活性
+  severity: medium
+  category: cert-c
+  type: semantic
+  language: c
+  description: 信号丢失（先 signal 后 wait）、广播缺失导致线程永久等待。
+  rationale: CERT CON38-C：condition variable 的用法必须保证不丢信号、不死等。
+  fix_suggestion: 修改条件与 signal 在同一把锁内；必要时用 broadcast。
+  tags:
+  - CON
+  - semantic
+  match:
+    prompt: 判断该函数是否存在丢失唤醒或永久等待的条件变量误用。若存在，violation=true，message 说明问题。
+    context:
+      candidate_regex: \bpthread_cond_(wait|signal|broadcast)\b
+      limit: 10
+  references:
+  - https://cmu-sei.github.io/secure-coding-standards/sei-cert-c-coding-standard/rules/concurrency-con/
+- id: CON39-C
+  name: 不要重复 join 或 detach 同一线程
+  severity: high
+  category: cert-c
+  type: semantic
+  language: c
+  description: 对已 join/detach 的线程再次操作，行为未定义。
+  rationale: CERT CON39-C：线程只能被 join 或 detach 一次。
+  fix_suggestion: 用一个状态位记录线程是否已被回收。
+  tags:
+  - CON
+  - semantic
+  match:
+    prompt: 判断该函数是否可能对同一 pthread_t 重复调用 pthread_join 或 pthread_detach。若存在，violation=true。
+    context:
+      candidate_regex: \bpthread_(join|detach)\b
+      limit: 10
+  references:
+  - https://cmu-sei.github.io/secure-coding-standards/sei-cert-c-coding-standard/rules/concurrency-con/
+- id: CON40-C
+  name: 同一表达式中不要两次引用原子变量
+  severity: medium
+  category: cert-c
+  type: semantic
+  language: c
+  description: atomic 变量在表达式中出现两次（如 a++ + a）会被求值两次，结果不确定。
+  rationale: CERT CON40-C：原子读改写不是复合原子操作。
+  fix_suggestion: 先做一次原子读取到局部变量再参与运算。
+  tags:
+  - CON
+  - semantic
+  match:
+    prompt: 判断该函数是否在同一表达式中两次引用同一原子变量。若存在，violation=true。
+    context:
+      candidate_regex: atomic
+      limit: 10
+  references:
+  - https://cmu-sei.github.io/secure-coding-standards/sei-cert-c-coding-standard/rules/concurrency-con/
+- id: CON41-C
+  name: 可能虚假失败的函数必须放在循环中
+  severity: low
+  category: cert-c
+  type: semantic
+  language: c
+  description: pthread_mutex_trylock 等可能虚假失败，单次尝试即放弃会漏掉本可成功的操作。
+  rationale: CERT CON41-C：可能虚假失败的调用需要重试。
+  fix_suggestion: 用循环重试，或在失败后再做真正可判定的判断。
+  tags:
+  - CON
+  - semantic
+  match:
+    prompt: 判断该函数是否对可能虚假失败的调用只尝试一次即放弃。若存在，violation=true。
+    context:
+      candidate_regex: \bpthread_\w*try\w*\b
+      limit: 10
+  references:
+  - https://cmu-sei.github.io/secure-coding-standards/sei-cert-c-coding-standard/rules/concurrency-con/
+- id: CON43-C
+  name: 多线程代码中不得存在数据竞争
+  severity: critical
+  category: cert-c
+  type: semantic
+  language: c
+  description: 两个线程无同步地访问同一对象且至少一个写，是未定义行为，也是一类高危漏洞。
+  rationale: CERT CON43-C：数据竞争必须消除。
+  fix_suggestion: 用互斥量或原子操作保护所有共享读写。
+  tags:
+  - CON
+  - semantic
+  match:
+    prompt: 判断该函数中的共享（全局/静态/堆）对象是否存在无同步的并发读写。若存在，violation=true，message 指出对象。
+    context:
+      candidate_regex: ->|\bglobal\b|\bstatic\b
+      limit: 10
+  references:
+  - https://cmu-sei.github.io/secure-coding-standards/sei-cert-c-coding-standard/rules/concurrency-con/

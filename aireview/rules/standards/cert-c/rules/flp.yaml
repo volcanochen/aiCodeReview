@@ -1,0 +1,115 @@
+# CERT C — FLP 类别
+- id: FLP30-C
+  name: 不要用浮点数作循环计数器
+  severity: medium
+  category: cert-c
+  type: regex
+  language: c
+  description: for 循环用 float/double 累加，累积误差会让循环次数不可预期。
+  rationale: CERT FLP30-C：浮点累加不精确。
+  fix_suggestion: 用整数计数器，循环体内再换算成浮点值。
+  tags:
+  - FLP
+  - auto
+  match:
+    pattern: for\s*\(\s*(?:float|double)\s+\w+
+    message: for 循环使用浮点计数器
+    file_scope: &id001
+      language: c
+      path_glob: '*.c'
+  references:
+  - https://cmu-sei.github.io/secure-coding-standards/sei-cert-c-coding-standard/rules/floating-point-flp/
+- id: FLP32-C
+  name: 防止或检测数学函数的域错误与范围错误
+  severity: medium
+  category: cert-c
+  type: semantic
+  language: c
+  description: sqrt(-1)、log(0)、acos(2) 等超出定义域，返回值与 errno 行为依赖实现。
+  rationale: CERT FLP32-C：数学函数域错误需显式处理。
+  fix_suggestion: 调用前检查定义域；必要时检查 errno 与返回值是否 NaN/Inf。
+  tags:
+  - FLP
+  - semantic
+  match:
+    prompt: 判断该函数调用数学库函数（sqrt/log/log10/asin/acos/pow/exp）时是否未校验定义域或返回值。若存在，violation=true，message 指出调用。
+    context:
+      candidate_regex: \b(sqrt|log|log10|log2|asin|acos|pow|exp|fmod)\s*\(
+      limit: 10
+  references:
+  - https://cmu-sei.github.io/secure-coding-standards/sei-cert-c-coding-standard/rules/floating-point-flp/
+- id: FLP34-C
+  name: 确保浮点转换在目标类型范围内
+  severity: medium
+  category: cert-c
+  type: semantic
+  language: c
+  description: double 转 float、或浮点转整数时超出目标范围，结果未定义或饱和，依赖实现。
+  rationale: CERT FLP34-C：超范围浮点转换未定义。
+  fix_suggestion: 转换前与目标类型最大/最小值比较。
+  tags:
+  - FLP
+  - semantic
+  match:
+    prompt: 判断该函数是否存在浮点转整数或 double 转 float 而未检查范围。若存在，violation=true。
+    context:
+      candidate_regex: \(\s*(?:int|long|short|float|unsigned)\s*\)
+      limit: 10
+  references:
+  - https://cmu-sei.github.io/secure-coding-standards/sei-cert-c-coding-standard/rules/floating-point-flp/
+- id: FLP36-C
+  name: 整型转浮点要保留精度
+  severity: low
+  category: cert-c
+  type: semantic
+  language: c
+  description: 大于 2^53 的整数转 double、或大整数转 float 会丢失低位，用于货币/ID 计算会出错。
+  rationale: CERT FLP36-C：浮点尾数位数有限。
+  fix_suggestion: 大整数用整数运算或十进制库；不要用 float 表示精确整数。
+  tags:
+  - FLP
+  - semantic
+  match:
+    prompt: 判断该函数是否把可能超出尾数精度的整数转换为浮点并参与精确比较/累加。若存在，violation=true。
+    context:
+      candidate_regex: \(\s*(?:float|double)\s*\)|=\s*\w+\s*;
+      limit: 10
+  references:
+  - https://cmu-sei.github.io/secure-coding-standards/sei-cert-c-coding-standard/rules/floating-point-flp/
+- id: FLP37-C
+  name: 不要用对象表示比较浮点值
+  severity: low
+  category: cert-c
+  type: regex
+  language: c
+  description: 用 memcmp 比较 float/double 会因 NaN、-0.0、padding 产生与数值比较不同的结果。
+  rationale: CERT FLP37-C：浮点对象表示不唯一。
+  fix_suggestion: 用 ==/!= 或带容差的比较（fabs(a-b) < eps）；判 NaN 用 isnan。
+  tags:
+  - FLP
+  - heuristic
+  match:
+    pattern: \bmemcmp\s*\([^)]*\b(?:float|double)\b
+    message: 用 memcmp 比较浮点对象
+    file_scope: *id001
+  references:
+  - https://cmu-sei.github.io/secure-coding-standards/sei-cert-c-coding-standard/rules/floating-point-flp/
+- id: FLP38-C
+  name: 使用类型泛型宏时避免未定义行为
+  severity: low
+  category: cert-c
+  type: semantic
+  language: c
+  description: 把错误类型传给 fmax/fmin 等类型泛型宏（如整数与浮点混用）可能触发未定义行为。
+  rationale: CERT FLP38-C：类型泛型宏的参数类型必须一致且为浮点。
+  fix_suggestion: 显式转换到同一浮点类型后再调用。
+  tags:
+  - FLP
+  - semantic
+  match:
+    prompt: 判断该函数调用类型泛型宏（fmax/fmin/fabs/isgreater 等）时参数类型是否不一致或含整数。若存在，violation=true。
+    context:
+      candidate_regex: \b(fmax|fmin|fabs|isgreater|isless|isnan|isinf)\s*\(
+      limit: 10
+  references:
+  - https://cmu-sei.github.io/secure-coding-standards/sei-cert-c-coding-standard/rules/floating-point-flp/

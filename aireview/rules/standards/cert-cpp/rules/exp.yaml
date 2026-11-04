@@ -1,0 +1,267 @@
+# CERT C++ — EXP 类别
+- id: EXP50-CPP
+  name: 不要依赖副作用求值顺序
+  severity: medium
+  category: cert-cpp
+  type: regex
+  language: cpp
+  description: 同一表达式内对同一对象既读又改，求值顺序未规定。
+  rationale: CERT C++ EXP50-CPP：见规范原文。
+  fix_suggestion: 把有副作用的子表达式拆成独立语句。
+  tags:
+  - EXP
+  - heuristic
+  match:
+    pattern: \b(\w+)\s*\+\+[^;\n]*?[+\-*/%][^;\n]*?\b\1\b
+    message: 同一表达式内对同一对象既读又改
+    file_scope: &id001
+      language: cpp
+      path_glob: '*.cpp'
+  references:
+  - https://cmu-sei.github.io/secure-coding-standards/sei-cert-cpp-coding-standard/rules/expressions-exp/
+- id: EXP51-CPP
+  name: 不要通过错误类型的指针 delete 数组
+  severity: high
+  category: cert-cpp
+  type: semantic
+  language: cpp
+  description: 对数组用 delete 而非 delete[]，或通过基类指针 delete 派生数组，都是未定义行为。
+  rationale: CERT C++ EXP51-CPP：见规范原文。
+  fix_suggestion: 数组一律用 delete[]；多态基类加虚析构。
+  tags:
+  - EXP
+  - semantic
+  match:
+    prompt: 判断该函数是否用 delete（而非 delete[]）释放 new[] 分配的内存，或通过基类指针删除派生数组。若存在，violation=true。
+    context:
+      candidate_regex: \bdelete\b
+      limit: 8
+  references:
+  - https://cmu-sei.github.io/secure-coding-standards/sei-cert-cpp-coding-standard/rules/expressions-exp/
+- id: EXP52-CPP
+  name: 不要在未求值操作数中依赖副作用
+  severity: medium
+  category: cert-cpp
+  type: regex
+  language: cpp
+  description: sizeof/decltype 的操作数不求值，副作用不会发生。
+  rationale: CERT C++ EXP52-CPP：见规范原文。
+  fix_suggestion: 把副作用移出未求值上下文。
+  tags:
+  - EXP
+  - heuristic
+  match:
+    pattern: \b(?:sizeof|decltype|noexcept)\s*\([^)]*(?:\+\+|--|=[^=])[^)]*\)
+    message: 未求值操作数中含副作用，该副作用不会执行
+    file_scope: *id001
+  references:
+  - https://cmu-sei.github.io/secure-coding-standards/sei-cert-cpp-coding-standard/rules/expressions-exp/
+- id: EXP53-CPP
+  name: 不要读取未初始化内存
+  severity: high
+  category: cert-cpp
+  type: semantic
+  language: cpp
+  description: 读取未初始化成员/变量，值不确定。
+  rationale: CERT C++ EXP53-CPP：见规范原文。
+  fix_suggestion: 构造时初始化所有成员（用 {} 或成员初始化列表）。
+  tags:
+  - EXP
+  - semantic
+  match:
+    prompt: 判断该函数是否读取了未初始化的成员或局部变量。若存在，violation=true。
+    context:
+      candidate_regex: \w+\s*;
+      limit: 8
+  references:
+  - https://cmu-sei.github.io/secure-coding-standards/sei-cert-cpp-coding-standard/rules/expressions-exp/
+- id: EXP54-CPP
+  name: 不要访问生命周期之外的对象
+  severity: critical
+  category: cert-cpp
+  type: semantic
+  language: cpp
+  description: 对象析构后继续访问（含悬垂引用/指针）是未定义行为。
+  rationale: CERT C++ EXP54-CPP：见规范原文。
+  fix_suggestion: 明确所有权，用智能指针；析构后置空。
+  tags:
+  - EXP
+  - semantic
+  match:
+    prompt: 判断该函数是否访问了已析构或超出生命周期的对象。若存在，violation=true。
+    context:
+      candidate_regex: \*|->|\.
+      limit: 8
+  references:
+  - https://cmu-sei.github.io/secure-coding-standards/sei-cert-cpp-coding-standard/rules/expressions-exp/
+- id: EXP55-CPP
+  name: 不要通过无 cv 限定的类型访问 cv 限定对象
+  severity: medium
+  category: cert-cpp
+  type: semantic
+  language: cpp
+  description: const_cast 去掉 const 后写入原本 const 的对象，是未定义行为。
+  rationale: CERT C++ EXP55-CPP：见规范原文。
+  fix_suggestion: 不要用 const_cast 写入；需要副本就拷贝。
+  tags:
+  - EXP
+  - semantic
+  match:
+    prompt: 判断该函数是否用 const_cast 去掉 const 并写入对象。若存在，violation=true。
+    context:
+      candidate_regex: const_cast
+      limit: 8
+  references:
+  - https://cmu-sei.github.io/secure-coding-standards/sei-cert-cpp-coding-standard/rules/expressions-exp/
+- id: EXP56-CPP
+  name: 不要用不匹配的语言链接调用函数
+  severity: medium
+  category: cert-cpp
+  type: semantic
+  language: cpp
+  description: C/C++ 链接约定不匹配会导致符号解析错误或调用约定错乱。
+  rationale: CERT C++ EXP56-CPP：见规范原文。
+  fix_suggestion: 头文件中用 extern "C" 正确声明。
+  tags:
+  - EXP
+  - semantic
+  match:
+    prompt: 判断该函数是否以与声明不匹配的语言链接被调用。若存在，violation=true。
+    context:
+      candidate_regex: extern\s+"C"
+      limit: 8
+  references:
+  - https://cmu-sei.github.io/secure-coding-standards/sei-cert-cpp-coding-standard/rules/expressions-exp/
+- id: EXP57-CPP
+  name: 不要转换或删除指向不完整类型的指针
+  severity: high
+  category: cert-cpp
+  type: semantic
+  language: cpp
+  description: 对不完整类型做 delete 或向下转换，析构与偏移都可能错误。
+  rationale: CERT C++ EXP57-CPP：见规范原文。
+  fix_suggestion: 在可见完整定义处操作，或用虚析构。
+  tags:
+  - EXP
+  - semantic
+  match:
+    prompt: 判断该函数是否对不完整类型指针做 delete 或 static_cast 向下转换。若存在，violation=true。
+    context:
+      candidate_regex: \bdelete\b|static_cast
+      limit: 8
+  references:
+  - https://cmu-sei.github.io/secure-coding-standards/sei-cert-cpp-coding-standard/rules/expressions-exp/
+- id: EXP58-CPP
+  name: 向 va_start 传入正确类型的参数
+  severity: medium
+  category: cert-cpp
+  type: semantic
+  language: cpp
+  description: va_start 的最后一个参数类型与提升规则不符会导致取参错位。
+  rationale: CERT C++ EXP58-CPP：见规范原文。
+  fix_suggestion: 确保 va_start 参数是最后一个具名参数且未被提升。
+  tags:
+  - EXP
+  - semantic
+  match:
+    prompt: 判断该函数是否向 va_start 传入了错误的参数类型。若存在，violation=true。
+    context:
+      candidate_regex: va_start
+      limit: 8
+  references:
+  - https://cmu-sei.github.io/secure-coding-standards/sei-cert-cpp-coding-standard/rules/expressions-exp/
+- id: EXP59-CPP
+  name: 只在合法类型与成员上使用 offsetof
+  severity: medium
+  category: cert-cpp
+  type: semantic
+  language: cpp
+  description: 对非标准布局类型或非静态成员用 offsetof 是未定义行为。
+  rationale: CERT C++ EXP59-CPP：见规范原文。
+  fix_suggestion: 改用标准布局类型，或改用成员指针。
+  tags:
+  - EXP
+  - semantic
+  match:
+    prompt: 判断该函数是否对非标准布局类型使用 offsetof。若存在，violation=true。
+    context:
+      candidate_regex: offsetof
+      limit: 8
+  references:
+  - https://cmu-sei.github.io/secure-coding-standards/sei-cert-cpp-coding-standard/rules/expressions-exp/
+- id: EXP60-CPP
+  name: 不要跨执行边界传递非标准布局对象
+  severity: medium
+  category: cert-cpp
+  type: semantic
+  language: cpp
+  description: 布局不保证与 ABI 一致，跨边界传递会解析错位。
+  rationale: CERT C++ EXP60-CPP：见规范原文。
+  fix_suggestion: 用 POD 或显式序列化。
+  tags:
+  - EXP
+  - semantic
+  match:
+    prompt: 判断该函数是否把非标准布局类对象传给 C ABI 或跨模块接口。若存在，violation=true。
+    context:
+      candidate_regex: extern\s+"C"|void\s*\*
+      limit: 8
+  references:
+  - https://cmu-sei.github.io/secure-coding-standards/sei-cert-cpp-coding-standard/rules/expressions-exp/
+- id: EXP61-CPP
+  name: lambda 对象不得比其引用捕获的对象活得更久
+  severity: critical
+  category: cert-cpp
+  type: semantic
+  language: cpp
+  description: lambda 捕获的引用在宿主对象销毁后悬垂。
+  rationale: CERT C++ EXP61-CPP：见规范原文。
+  fix_suggestion: 需要延长生命周期就按值捕获或用 shared_ptr。
+  tags:
+  - EXP
+  - semantic
+  match:
+    prompt: 判断该函数返回或存储了按引用捕获局部变量的 lambda。若存在，violation=true。
+    context:
+      candidate_regex: \[[^\]]*&
+      limit: 8
+  references:
+  - https://cmu-sei.github.io/secure-coding-standards/sei-cert-cpp-coding-standard/rules/expressions-exp/
+- id: EXP62-CPP
+  name: 不要访问对象表示中不属于值表示的位
+  severity: low
+  category: cert-cpp
+  type: semantic
+  language: cpp
+  description: padding 位参与比较或哈希会产生不确定结果。
+  rationale: CERT C++ EXP62-CPP：见规范原文。
+  fix_suggestion: 逐字段比较，不要 memcmp 整个对象。
+  tags:
+  - EXP
+  - semantic
+  match:
+    prompt: 判断该函数是否按字节比较或哈希整个类对象。若存在，violation=true。
+    context:
+      candidate_regex: memcmp|memcpy|hash
+      limit: 8
+  references:
+  - https://cmu-sei.github.io/secure-coding-standards/sei-cert-cpp-coding-standard/rules/expressions-exp/
+- id: EXP63-CPP
+  name: 不要依赖被移动对象的值
+  severity: medium
+  category: cert-cpp
+  type: semantic
+  language: cpp
+  description: std::move 之后的对象处于有效但未指定状态。
+  rationale: CERT C++ EXP63-CPP：见规范原文。
+  fix_suggestion: 移动后不要读取，或重新赋值。
+  tags:
+  - EXP
+  - semantic
+  match:
+    prompt: 判断该函数是否在对象被 move 之后继续读取它。若存在，violation=true。
+    context:
+      candidate_regex: std::move
+      limit: 8
+  references:
+  - https://cmu-sei.github.io/secure-coding-standards/sei-cert-cpp-coding-standard/rules/expressions-exp/

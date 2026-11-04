@@ -1,0 +1,153 @@
+# CERT C++ — MEM 类别
+- id: MEM50-CPP
+  name: 不要访问已释放内存
+  severity: critical
+  category: cert-cpp
+  type: semantic
+  language: cpp
+  description: delete/free 后继续访问是 use-after-free。
+  rationale: CERT C++ MEM50-CPP：见规范原文。
+  fix_suggestion: 用智能指针；释放后置 nullptr。
+  tags:
+  - MEM
+  - semantic
+  match:
+    prompt: 判断该函数是否在 delete/free 之后仍访问同一对象。若存在，violation=true。
+    context:
+      candidate_regex: \bdelete\b|free\(
+      limit: 8
+  references:
+  - https://cmu-sei.github.io/secure-coding-standards/sei-cert-cpp-coding-standard/rules/memory-mem/
+- id: MEM51-CPP
+  name: 正确释放动态分配的资源
+  severity: high
+  category: cert-cpp
+  type: semantic
+  language: cpp
+  description: new/new[] 与 delete/delete[] 必须配对，且所有路径都要释放。
+  rationale: CERT C++ MEM51-CPP：见规范原文。
+  fix_suggestion: 改用 std::unique_ptr/shared_ptr；数组配 delete[]。
+  tags:
+  - MEM
+  - semantic
+  match:
+    prompt: 判断该函数是否存在 new/delete 不配对或泄漏路径。若存在，violation=true。
+    context:
+      candidate_regex: \bnew\b|\bdelete\b
+      limit: 8
+  references:
+  - https://cmu-sei.github.io/secure-coding-standards/sei-cert-cpp-coding-standard/rules/memory-mem/
+- id: MEM52-CPP
+  name: 检测并处理内存分配错误
+  severity: high
+  category: cert-cpp
+  type: semantic
+  language: cpp
+  description: 使用 nothrow 版 new 或 malloc 后未检查返回值。
+  rationale: CERT C++ MEM52-CPP：见规范原文。
+  fix_suggestion: 检查返回值，或用会抛异常的 new。
+  tags:
+  - MEM
+  - semantic
+  match:
+    prompt: 判断该函数是否使用 new(std::nothrow)/malloc 后未检查空指针。若存在，violation=true。
+    context:
+      candidate_regex: nothrow|malloc
+      limit: 8
+  references:
+  - https://cmu-sei.github.io/secure-coding-standards/sei-cert-cpp-coding-standard/rules/memory-mem/
+- id: MEM53-CPP
+  name: 手工管理对象生命周期时必须显式构造与析构
+  severity: high
+  category: cert-cpp
+  type: semantic
+  language: cpp
+  description: placement new 构造的对象必须显式调用析构函数，否则资源泄漏。
+  rationale: CERT C++ MEM53-CPP：见规范原文。
+  fix_suggestion: 配对调用析构，或用 std::optional/aligned storage 封装。
+  tags:
+  - MEM
+  - semantic
+  match:
+    prompt: 判断该函数是否用 placement new 构造对象后未显式析构。若存在，violation=true。
+    context:
+      candidate_regex: new\s*\(
+      limit: 8
+  references:
+  - https://cmu-sei.github.io/secure-coding-standards/sei-cert-cpp-coding-standard/rules/memory-mem/
+- id: MEM54-CPP
+  name: 为 placement new 提供对齐且容量足够的存储
+  severity: high
+  category: cert-cpp
+  type: semantic
+  language: cpp
+  description: 传给 placement new 的缓冲区若未按类型对齐或容量不足，是未定义行为。
+  rationale: CERT C++ MEM54-CPP：见规范原文。
+  fix_suggestion: 用 alignas 的存储或 std::aligned_storage。
+  tags:
+  - MEM
+  - semantic
+  match:
+    prompt: 判断该函数是否把对齐不足或容量不够的缓冲区传给 placement new。若存在，violation=true。
+    context:
+      candidate_regex: new\s*\(
+      limit: 8
+  references:
+  - https://cmu-sei.github.io/secure-coding-standards/sei-cert-cpp-coding-standard/rules/memory-mem/
+- id: MEM55-CPP
+  name: 遵守替换式动态存储管理的要求
+  severity: medium
+  category: cert-cpp
+  type: semantic
+  language: cpp
+  description: 自定义 operator new/delete 必须满足标准要求（对齐、异常、大小）。
+  rationale: CERT C++ MEM55-CPP：见规范原文。
+  fix_suggestion: 成对重载并遵守 noexcept 与对齐约定。
+  tags:
+  - MEM
+  - semantic
+  match:
+    prompt: 判断该文件的 operator new/delete 实现是否违反标准要求。若存在，violation=true。
+    context:
+      candidate_regex: operator\s+(new|delete)
+      limit: 8
+  references:
+  - https://cmu-sei.github.io/secure-coding-standards/sei-cert-cpp-coding-standard/rules/memory-mem/
+- id: MEM56-CPP
+  name: 不要把已被拥有的裸指针存入无关智能指针
+  severity: critical
+  category: cert-cpp
+  type: semantic
+  language: cpp
+  description: 同一指针交给两个智能指针会导致 double free。
+  rationale: CERT C++ MEM56-CPP：见规范原文。
+  fix_suggestion: 用 std::make_unique/make_shared 创建，避免裸 new。
+  tags:
+  - MEM
+  - semantic
+  match:
+    prompt: 判断该函数是否把已被某个智能指针拥有的裸指针交给另一个智能指针。若存在，violation=true。
+    context:
+      candidate_regex: unique_ptr|shared_ptr
+      limit: 8
+  references:
+  - https://cmu-sei.github.io/secure-coding-standards/sei-cert-cpp-coding-standard/rules/memory-mem/
+- id: MEM57-CPP
+  name: 重对齐类型不要用默认 operator new
+  severity: medium
+  category: cert-cpp
+  type: semantic
+  language: cpp
+  description: 默认 new 可能不满足 over-aligned 类型的对齐要求。
+  rationale: CERT C++ MEM57-CPP：见规范原文。
+  fix_suggestion: 使用 C++17 的对齐感知 new，或 aligned_alloc。
+  tags:
+  - MEM
+  - semantic
+  match:
+    prompt: 判断该函数是否为 alignas 超过默认对齐的类型使用默认 new。若存在，violation=true。
+    context:
+      candidate_regex: alignas|new\s
+      limit: 8
+  references:
+  - https://cmu-sei.github.io/secure-coding-standards/sei-cert-cpp-coding-standard/rules/memory-mem/

@@ -1,0 +1,246 @@
+# CERT C — FIO 类别
+- id: FIO30-C
+  name: 格式串中不得包含用户输入
+  severity: high
+  category: cert-c
+  type: regex
+  language: c
+  description: printf(buf) 直接把用户输入当格式串，%n/%s 可被用来任意读写内存。
+  rationale: CERT FIO30-C：用户输入不得作为格式串。
+  fix_suggestion: 写成 printf("%s", buf)。
+  tags:
+  - FIO
+  - heuristic
+  match:
+    pattern: \b(?:printf|fprintf|sprintf|snprintf|syslog|vprintf)\s*\(\s*(?:stderr\s*,\s*)?[A-Za-z_]\w*\s*[,)]
+    message: 格式串来自变量而非字面量，可能被注入格式说明符
+    file_scope: &id001
+      language: c
+      path_glob: '*.c'
+  references:
+  - https://cmu-sei.github.io/secure-coding-standards/sei-cert-c-coding-standard/rules/input-output-fio/
+- id: FIO32-C
+  name: 不要对设备文件执行只适用于普通文件的操作
+  severity: medium
+  category: cert-c
+  type: semantic
+  language: c
+  description: 对 /dev 设备文件做普通文件操作（如按普通文件读写、假定可 seek）会阻塞或行为异常。
+  rationale: CERT FIO32-C：设备文件的语义与普通文件不同。
+  fix_suggestion: 先 stat 判断文件类型，对设备文件使用专用接口。
+  tags:
+  - FIO
+  - semantic
+  match:
+    prompt: 判断该函数是否对可能是设备文件的路径执行了仅适用于普通文件的操作且未检查文件类型。若存在，violation=true。
+    context:
+      candidate_regex: \b(open|fopen|stat|fstat|lstat)\s*\(
+      limit: 10
+  references:
+  - https://cmu-sei.github.io/secure-coding-standards/sei-cert-c-coding-standard/rules/input-output-fio/
+- id: FIO34-C
+  name: 区分文件读入的字符与 EOF·WEOF
+  severity: high
+  category: cert-c
+  type: regex
+  language: c
+  description: getc/fgetc/getchar 返回 int（可能为 EOF），存进 char 会丢失 EOF 判断或截断 0xFF。
+  rationale: CERT FIO34-C：必须用 int 接收字符读取函数的返回值。
+  fix_suggestion: 用 int c 接收，再与 EOF 比较。
+  tags:
+  - FIO
+  - auto
+  match:
+    pattern: \bchar\s+\w+\s*=\s*(?:getc|fgetc|getchar|getwc|fgetwc)\s*\(
+    message: 用 char 接收字符读取结果，无法区分 EOF
+    file_scope: *id001
+  references:
+  - https://cmu-sei.github.io/secure-coding-standards/sei-cert-c-coding-standard/rules/input-output-fio/
+- id: FIO37-C
+  name: 不要假定 fgets 成功时一定返回非空串
+  severity: medium
+  category: cert-c
+  type: semantic
+  language: c
+  description: fgets 成功也可能只读到 "\n" 或空内容，直接按非空处理会导致后续解析错误。
+  rationale: CERT FIO37-C：fgets/fgetws 成功返回时字符串可能为空。
+  fix_suggestion: 读取后检查首字符或长度，再做解析。
+  tags:
+  - FIO
+  - semantic
+  match:
+    prompt: 判断该函数在 fgets 返回非 NULL 后是否未检查字符串是否为空就进行处理（如 buf[0]、strlen、atoi）。若存在，violation=true。
+    context:
+      candidate_regex: \bfgets\s*\(
+      limit: 10
+  references:
+  - https://cmu-sei.github.io/secure-coding-standards/sei-cert-c-coding-standard/rules/input-output-fio/
+- id: FIO38-C
+  name: 不要拷贝 FILE 对象
+  severity: high
+  category: cert-c
+  type: regex
+  language: c
+  description: 按值拷贝 FILE 结构体会产生两个共享同一底层句柄的副本，缓冲区状态错乱。
+  rationale: CERT FIO38-C：FILE 对象不可复制。
+  fix_suggestion: 需要第二个流就再 fopen 一次，或传 FILE* 指针。
+  tags:
+  - FIO
+  - heuristic
+  match:
+    pattern: (?:FILE\s*\*?\s*\w+\s*=\s*\*\s*\w+|\*\s*(?:stdin|stdout|stderr)\s*=)
+    message: 疑似按值拷贝 FILE 对象
+    file_scope: *id001
+  references:
+  - https://cmu-sei.github.io/secure-coding-standards/sei-cert-c-coding-standard/rules/input-output-fio/
+- id: FIO39-C
+  name: 读写切换前必须 flush 或定位
+  severity: medium
+  category: cert-c
+  type: semantic
+  language: c
+  description: 同一流上交替读写而不 fflush/fseek，缓冲区状态未定义。
+  rationale: CERT FIO39-C：更新流读写切换必须 flush 或定位。
+  fix_suggestion: 写后读前调用 fflush，或统一用 fseek 定位。
+  tags:
+  - FIO
+  - semantic
+  match:
+    prompt: 判断该函数是否在同一 FILE* 上交替调用读写函数且中间没有 fflush/fseek/fsetpos。若存在，violation=true。
+    context:
+      candidate_regex: \b(fgetc|fputc|fread|fwrite|fprintf|fscanf)\s*\(
+      limit: 10
+  references:
+  - https://cmu-sei.github.io/secure-coding-standards/sei-cert-c-coding-standard/rules/input-output-fio/
+- id: FIO40-C
+  name: fgets 失败后必须重置缓冲区内容
+  severity: low
+  category: cert-c
+  type: semantic
+  language: c
+  description: fgets 返回 NULL 时缓冲区内容不确定，若继续使用旧内容会处理过期数据。
+  rationale: CERT FIO40-C：失败后缓冲区内容未规定。
+  fix_suggestion: 失败时把缓冲区首字节置 0 或清空后再用。
+  tags:
+  - FIO
+  - semantic
+  match:
+    prompt: 判断该函数在 fgets 返回 NULL 后是否仍使用缓冲区内容而没有重置。若存在，violation=true。
+    context:
+      candidate_regex: \bfgets\s*\(
+      limit: 10
+  references:
+  - https://cmu-sei.github.io/secure-coding-standards/sei-cert-c-coding-standard/rules/input-output-fio/
+- id: FIO41-C
+  name: getc/putc 的流参数不得带副作用
+  severity: medium
+  category: cert-c
+  type: regex
+  language: c
+  description: getc/putc 可能是宏，流参数会被求值多次，传 ++p 之类会多推进一次。
+  rationale: CERT FIO41-C：宏实现的流函数可能多次求值参数。
+  fix_suggestion: 先把带副作用的表达式求值到变量，再传入。
+  tags:
+  - FIO
+  - auto
+  match:
+    pattern: \b(?:getc|putc|getwc|putwc)\s*\([^)\n]*(?:\+\+|--)[^)\n]*\)
+    message: 流函数的参数含副作用，宏展开时会重复求值
+    file_scope: *id001
+  references:
+  - https://cmu-sei.github.io/secure-coding-standards/sei-cert-c-coding-standard/rules/input-output-fio/
+- id: FIO42-C
+  name: 文件不再使用时必须关闭
+  severity: medium
+  category: cert-c
+  type: semantic
+  language: c
+  description: fopen/open 成功后未在所有路径 fclose/close，会耗尽文件描述符。
+  rationale: CERT FIO42-C：文件使用完毕必须关闭。
+  fix_suggestion: 统一出口关闭；用 goto cleanup 或 RAII 封装。
+  tags:
+  - FIO
+  - semantic
+  match:
+    prompt: 判断该函数打开的文件是否在所有返回路径上都被关闭（是否存在泄漏路径）。若存在，violation=true，message 指出泄漏点。
+    context:
+      candidate_regex: \b(fopen|open|fdopen|freopen)\s*\(
+      limit: 10
+  references:
+  - https://cmu-sei.github.io/secure-coding-standards/sei-cert-c-coding-standard/rules/input-output-fio/
+- id: FIO44-C
+  name: fsetpos 只能使用 fgetpos 返回的位置值
+  severity: low
+  category: cert-c
+  type: semantic
+  language: c
+  description: 手工构造 fpos_t 再传给 fsetpos，其内部表示由实现定义。
+  rationale: CERT FIO44-C：fpos_t 内容不可自行构造。
+  fix_suggestion: 只用 fgetpos 取得的位置值调用 fsetpos；按偏移定位用 fseek。
+  tags:
+  - FIO
+  - semantic
+  match:
+    prompt: 判断该函数是否自行构造或修改 fpos_t 后传给 fsetpos。若存在，violation=true。
+    context:
+      candidate_regex: \bfsetpos\s*\(
+      limit: 10
+  references:
+  - https://cmu-sei.github.io/secure-coding-standards/sei-cert-c-coding-standard/rules/input-output-fio/
+- id: FIO45-C
+  name: 避免访问文件时的 TOCTOU 竞态
+  severity: high
+  category: cert-c
+  type: semantic
+  language: c
+  description: 先 access/stat 检查再 open 的模式，在两次调用之间文件可能被替换（如符号链接攻击）。
+  rationale: CERT FIO45-C：检查与使用之间必须原子。
+  fix_suggestion: 直接 open 并检查返回值/文件属性；需要排他创建用 O_EXCL；用 openat + 目录 fd。
+  tags:
+  - FIO
+  - semantic
+  match:
+    prompt: 判断该函数是否先检查文件是否存在/可访问（access/stat/lstat）再打开使用，构成 TOCTOU 模式。若存在，violation=true。
+    context:
+      candidate_regex: \b(access|stat|fopen|open)\s*\(
+      limit: 10
+  references:
+  - https://cmu-sei.github.io/secure-coding-standards/sei-cert-c-coding-standard/rules/input-output-fio/
+- id: FIO46-C
+  name: 不要访问已关闭的文件
+  severity: high
+  category: cert-c
+  type: semantic
+  language: c
+  description: fclose 之后继续用同一 FILE* 读写，是 use-after-close。
+  rationale: CERT FIO46-C：已关闭的流不可再访问。
+  fix_suggestion: 关闭后把指针置 NULL，并把所有权收敛到唯一位置。
+  tags:
+  - FIO
+  - semantic
+  match:
+    prompt: 判断该函数是否在 fclose/close 之后仍使用同一 FILE*/fd。若存在，violation=true，message 指出流。
+    context:
+      candidate_regex: \bfclose\s*\(
+      limit: 10
+  references:
+  - https://cmu-sei.github.io/secure-coding-standards/sei-cert-c-coding-standard/rules/input-output-fio/
+- id: FIO47-C
+  name: 使用合法的格式串
+  severity: high
+  category: cert-c
+  type: semantic
+  language: c
+  description: 格式说明符与实参类型/个数不匹配，或使用 %n、未限宽的 %s，都会导致未定义行为。
+  rationale: CERT FIO47-C：格式串必须与实参匹配且合法。
+  fix_suggestion: 限定宽度（%.*s / %10s），避免 %n，用编译器 -Wformat 检查。
+  tags:
+  - FIO
+  - semantic
+  match:
+    prompt: 判断该函数的 printf/scanf 族格式串是否存在说明符数量或类型与实参不匹配、使用 %n、或 %s 未限宽。若存在，violation=true，message 指出格式串。
+    context:
+      candidate_regex: \b(printf|fprintf|sprintf|snprintf|scanf|sscanf)\s*\(
+      limit: 10
+  references:
+  - https://cmu-sei.github.io/secure-coding-standards/sei-cert-c-coding-standard/rules/input-output-fio/

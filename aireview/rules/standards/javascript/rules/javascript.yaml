@@ -1,150 +1,434 @@
-# JavaScript / TypeScript 编码标准包 — 规则定义（正则类型，适用于 .js/.jsx/.ts/.tsx）。
+# JavaScript 编码标准包 — 常见反模式与安全隐患（regex 类型，适用于 .js/.ts）
 - id: js-var
-  name: "避免使用 var"
+  name: 使用 let/const 代替 var
   severity: low
   category: javascript
   type: regex
   language: javascript
-  description: "var 存在变量提升与函数作用域，易引发意料外的行为；应使用 let/const（块级作用域）。"
-  rationale: "ES6 起推荐 let/const 替代 var。"
-  fix_suggestion: "将 var 替换为 let（可变）或 const（常量）。"
-  enabled: true
+  description: var 是函数作用域且会提升，容易产生意料之外的覆盖。
+  rationale: ES6 起推荐块级作用域的 let/const。
+  fix_suggestion: 改用 let（需重新赋值）或 const（不重新赋值）。
+  tags:
+  - style
+  - core
   match:
-    pattern: '\bvar\s+'
-    message: "使用了 var（函数作用域/提升），建议改用 let/const"
-    file_scope: {language: javascript, path_glob: "*.js"}
-
+    pattern: ^\s*var\s+\w+
+    message: 使用了 var，建议改为 let/const
+    file_scope: &id001
+      language: javascript
+      path_glob: '*.js'
+  references: []
 - id: js-eqeq
-  name: "使用严格相等 === / !=="
+  name: 使用 === 代替 ==
   severity: medium
   category: javascript
   type: regex
   language: javascript
-  description: "== / != 会进行隐式类型转换，容易产生反直觉的结果（如 0 == '' 为 true）。"
-  rationale: "优先使用严格相等避免类型强制。"
-  fix_suggestion: "将 == 改为 ===，!= 改为 !==。"
-  enabled: true
+  description: == 会做隐式类型转换，[] == false、'' == 0 等结果违反直觉。
+  rationale: 严格相等避免类型转换带来的意外。
+  fix_suggestion: 改用 === / !==；确需宽松比较时显式转换后比较。
+  tags:
+  - bugs
+  - core
   match:
-    pattern: '(?<![=!])=(?!=)|(?<![=!])!(?!=)='
-    message: "使用了非严格相等（== / !=），建议改用 === / !== 避免类型强制"
-    file_scope: {language: javascript, path_glob: "*.js"}
-
+    pattern: '[^=!<>]==[^=]|!=[^=]'
+    message: 使用了宽松相等，建议 === / !==
+    file_scope: *id001
+  references: []
 - id: js-eval
-  name: "避免使用 eval"
+  name: 避免 eval / new Function
   severity: high
   category: javascript
   type: regex
   language: javascript
-  description: "eval 会执行字符串中的任意代码，若输入包含不可信数据则存在代码注入/XSS 风险。"
-  rationale: "动态执行字符串代码应尽量避免。"
-  fix_suggestion: "使用 JSON.parse 解析数据，或显式的对象/函数映射替代 eval。"
-  enabled: true
+  description: eval 与 new Function 执行任意字符串代码，输入不可信时等同 RCE。
+  rationale: 动态求值绕过 CSP 与静态检查。
+  fix_suggestion: 改用显式映射表、JSON.parse 或模板渲染。
+  tags:
+  - security
+  - core
   match:
-    pattern: '\beval\s*\('
-    message: "使用了 eval 执行动态代码，存在代码注入风险"
-    file_scope: {language: javascript, path_glob: "*.js"}
-
+    pattern: \beval\s*\(|new\s+Function\s*\(
+    message: 动态执行字符串代码
+    file_scope: *id001
+  references: []
 - id: js-with
-  name: "避免使用 with 语句"
+  name: 不要使用 with
   severity: medium
   category: javascript
   type: regex
   language: javascript
-  description: "with 语句已被弃用，且其作用域解析在严格模式下报错、且难以静态分析。"
-  rationale: "with 会降低可读性与性能，并破坏优化。"
-  fix_suggestion: "用显式的对象引用替代 with 块。"
-  enabled: true
+  description: with 会把作用域链变模糊，且在严格模式下被禁止。
+  rationale: with 让标识符解析不可预测。
+  fix_suggestion: 改为显式对象属性访问或解构赋值。
+  tags:
+  - bugs
   match:
-    pattern: '\bwith\s*\('
-    message: "使用了已弃用的 with 语句"
-    file_scope: {language: javascript, path_glob: "*.js"}
-
+    pattern: ^\s*with\s*\(
+    message: 使用了 with 语句
+    file_scope: *id001
+  references: []
 - id: js-console-log
-  name: "清理调试输出"
+  name: 生产代码避免 console.log
   severity: info
   category: javascript
   type: regex
   language: javascript
-  description: "遗留的 console.log/debug 会污染浏览器/服务端日志。"
-  rationale: "生产环境应移除调试输出。"
-  fix_suggestion: "删除调试用 console.log，或统一替换为日志服务调用。"
-  enabled: true
+  description: console 输出会泄漏内部状态，且在生产环境通常应移除。
+  rationale: 调试输出不应进入生产构建。
+  fix_suggestion: 改用统一日志库（并按级别控制），或构建时剔除。
+  tags:
+  - style
   match:
-    pattern: 'console\s*\.\s*(log|debug|info)\s*\('
-    message: "检测到 console.log/debug/info，请确认是否需要保留"
-    file_scope: {language: javascript, path_glob: "*.js"}
-
+    pattern: \bconsole\.(log|debug|info)\s*\(
+    message: 遗留 console 输出
+    file_scope: *id001
+  references: []
 - id: js-debugger
-  name: "移除 debugger 语句"
+  name: 不要遗留 debugger
+  severity: high
+  category: javascript
+  type: regex
+  language: javascript
+  description: debugger 语句会让调试器开启时暂停执行。
+  rationale: 遗留 debugger 会阻塞用户。
+  fix_suggestion: 删除 debugger 语句。
+  tags:
+  - bugs
+  - core
+  match:
+    pattern: ^\s*debugger\s*;?\s*$
+    message: 遗留 debugger 语句
+    file_scope: *id001
+  references: []
+- id: js-innerhtml-xss
+  name: innerHTML 存在 XSS 风险
+  severity: high
+  category: javascript
+  type: regex
+  language: javascript
+  description: 把不可信内容赋给 innerHTML 会解析其中的 HTML/脚本。
+  rationale: innerHTML 不转义，是 DOM XSS 的常见入口。
+  fix_suggestion: 改用 textContent，或用经过消毒的库（DOMPurify）。
+  tags:
+  - security
+  - core
+  match:
+    pattern: \.innerHTML\s*=
+    message: 直接设置 innerHTML，注意 XSS
+    file_scope: *id001
+  references: []
+- id: js-document-write
+  name: 避免 document.write
+  severity: medium
+  category: javascript
+  type: regex
+  language: javascript
+  description: document.write 会重写整个文档，且在异步加载后失效。
+  rationale: document.write 破坏解析流程。
+  fix_suggestion: 改用 DOM API 插入节点。
+  tags:
+  - bugs
+  match:
+    pattern: \bdocument\.write(ln)?\s*\(
+    message: 使用 document.write
+    file_scope: *id001
+  references: []
+- id: js-settimeout-string
+  name: setTimeout 不要传字符串
+  severity: medium
+  category: javascript
+  type: regex
+  language: javascript
+  description: 传字符串会被隐式 eval，等价于动态代码执行。
+  rationale: 字符串形式等同于 eval。
+  fix_suggestion: 改传函数引用。
+  tags:
+  - security
+  - core
+  match:
+    pattern: \bset(?:Timeout|Interval)\s*\(\s*[\"']
+    message: setTimeout 接收字符串参数（隐式 eval）
+    file_scope: *id001
+  references: []
+- id: js-for-var
+  name: 循环中不要用 var 捕获变量
+  severity: medium
+  category: javascript
+  type: regex
+  language: javascript
+  description: var 是函数作用域，闭包捕获到的是循环结束后的同一个变量。
+  rationale: 块级作用域才能让每次迭代独立绑定。
+  fix_suggestion: 改用 let。
+  tags:
+  - bugs
+  match:
+    pattern: for\s*\(\s*var\s+\w+
+    message: for 循环使用 var，闭包会共享同一变量
+    file_scope: *id001
+  references: []
+- id: js-hardcoded-secret
+  name: 不要硬编码敏感信息
+  severity: critical
+  category: javascript
+  type: regex
+  language: javascript
+  description: 源码里的密钥/口令会随前端包直接下发到浏览器。
+  rationale: 前端代码无法保密。
+  fix_suggestion: 改为由后端下发短期令牌，或使用密钥管理服务。
+  tags:
+  - security
+  - core
+  match:
+    pattern: (?i)\b(password|passwd|secret|api[_-]?key|access[_-]?key|token)\s*[:=]\s*['\"][^'\"]{3,}['\"]
+    message: 疑似硬编码敏感信息
+    file_scope: *id001
+  references: []
+- id: js-child-process
+  name: 避免 child_process 执行拼接命令
+  severity: high
+  category: javascript
+  type: regex
+  language: javascript
+  description: exec 会把字符串交给 shell，拼接用户输入即命令注入。
+  rationale: shell 解释会执行注入的分隔符与子命令。
+  fix_suggestion: 改用 execFile/spawn 传参数数组，不使用 shell。
+  tags:
+  - security
+  - core
+  match:
+    pattern: \bchild_process\b|\bexec(Sync)?\s*\(\s*[`'\"]
+    message: 通过 shell 执行命令，注意注入
+    file_scope: *id001
+  references: []
+- id: js-dynamic-regexp
+  name: 不要用变量构造正则
+  severity: high
+  category: javascript
+  type: regex
+  language: javascript
+  description: new RegExp(userInput) 可被构造出灾难性回溯或绕过校验。
+  rationale: 动态正则让输入控制匹配语义。
+  fix_suggestion: 用固定正则 + 转义函数，或改用字符串方法。
+  tags:
+  - security
+  match:
+    pattern: new\s+RegExp\s*\(\s*[A-Za-z_$]
+    message: 用变量构造正则表达式
+    file_scope: *id001
+  references: []
+- id: js-prototype-pollution
+  name: 不要写入 __proto__/prototype
+  severity: critical
+  category: javascript
+  type: regex
+  language: javascript
+  description: 向 __proto__ 或 Object.prototype 写入可污染所有对象。
+  rationale: 原型链被污染后影响全局对象行为。
+  fix_suggestion: 用 Object.create(null) 或 Map；合并对象时校验键名（拒绝 __proto__/constructor）。
+  tags:
+  - security
+  - core
+  match:
+    pattern: \.__proto__\s*=|\[\s*['\"]__proto__['\"]\s*\]\s*=|Object\.prototype\.\w+\s*=
+    message: 写入原型链，存在原型污染风险
+    file_scope: *id001
+  references: []
+- id: js-weak-random
+  name: 安全场景不要用 Math.random
+  severity: high
+  category: javascript
+  type: regex
+  language: javascript
+  description: Math.random 不是密码学安全随机源，可被预测。
+  rationale: 令牌、验证码等必须用 CSPRNG。
+  fix_suggestion: 改用 crypto.randomUUID() / crypto.getRandomValues()。
+  tags:
+  - security
+  - core
+  match:
+    pattern: Math\.random\s*\(\s*\)
+    message: 使用 Math.random，不适合安全用途
+    file_scope: *id001
+  references: []
+- id: js-target-blank
+  name: target=_blank 需加 rel=noopener
+  severity: medium
+  category: javascript
+  type: regex
+  language: javascript
+  description: 未加 rel=noopener 时新页面可通过 window.opener 操作原页面。
+  rationale: 反向标签劫持（tabnabbing）。
+  fix_suggestion: 加上 rel="noopener noreferrer"。
+  tags:
+  - security
+  match:
+    pattern: target\s*=\s*['\"]_blank['\"](?![^>]*rel\s*=\s*['\"][^'\"]*noopener)
+    message: target=_blank 缺少 rel=noopener
+    file_scope: *id001
+  references: []
+- id: js-parseint-radix
+  name: parseInt 应显式指定基数
+  severity: medium
+  category: javascript
+  type: regex
+  language: javascript
+  description: 不传基数时 '08' 之类的旧实现会按八进制解析。
+  rationale: 显式基数保证解析结果可预期。
+  fix_suggestion: 写成 parseInt(s, 10)。
+  tags:
+  - bugs
+  - core
+  match:
+    pattern: \bparseInt\s*\(\s*[^,)]+\)
+    message: parseInt 未指定基数
+    file_scope: *id001
+  references: []
+- id: js-isnan-global
+  name: 优先使用 Number.isNaN
   severity: low
   category: javascript
   type: regex
   language: javascript
-  description: "debugger 语句在调试器打开时会中断执行，遗留于生产代码会造成意外停顿。"
-  rationale: "生产构建应剔除 debugger。"
-  fix_suggestion: "删除 debugger 语句（或仅在开发构建中保留）。"
-  enabled: true
+  description: 全局 isNaN 会先做类型转换，'abc' 也会被判为 NaN。
+  rationale: Number.isNaN 只对真正的 NaN 返回 true。
+  fix_suggestion: 改用 Number.isNaN(x)。
+  tags:
+  - bugs
   match:
-    pattern: '\bdebugger\b'
-    message: "检测到 debugger 语句"
-    file_scope: {language: javascript, path_glob: "*.js"}
-
-- id: js-innerhtml-xss
-  name: "innerHTML 拼接用户输入存在 XSS 风险"
-  severity: high
-  category: javascript
-  type: regex
-  language: javascript
-  description: "innerHTML 直接拼接用户可控内容会引入跨站脚本（XSS）漏洞。"
-  rationale: "避免将不可信数据作为 HTML 插入 DOM。"
-  fix_suggestion: "使用 textContent 设置文本，或用 DOMPurify 等库对 HTML 做净化后再插入。"
-  enabled: true
-  match:
-    pattern: 'innerHTML\s*=[^;\n]*\+'
-    message: "innerHTML 拼接了内容（可能含用户可控数据），存在 XSS 风险"
-    file_scope: {language: javascript, path_glob: "*.js"}
-
-- id: js-document-write
-  name: "避免 document.write"
+    pattern: (?<!\.)\bisNaN\s*\(
+    message: 使用全局 isNaN，建议 Number.isNaN
+    file_scope: *id001
+  references: []
+- id: js-insecure-http
+  name: 不要硬编码 http:// 地址
   severity: medium
   category: javascript
   type: regex
   language: javascript
-  description: "document.write 会阻塞解析、覆盖文档，并可能引入 XSS。"
-  rationale: "现代开发中应避免 document.write。"
-  fix_suggestion: "改用安全的 DOM 操作（如 appendChild / insertAdjacentHTML 配合净化）。"
-  enabled: true
+  description: 明文 HTTP 会被中间人读取或篡改。
+  rationale: 传输必须加密。
+  fix_suggestion: 改用 https://，或从配置注入地址。
+  tags:
+  - security
   match:
-    pattern: 'document\s*\.\s*write\s*\('
-    message: "使用了 document.write，存在性能与 XSS 风险"
-    file_scope: {language: javascript, path_glob: "*.js"}
-
-- id: js-settimeout-string
-  name: "避免 setTimeout/setInterval 传入字符串"
+    pattern: '[''\"]http://(?!localhost|127\.0\.0\.1)'
+    message: 硬编码明文 HTTP 地址
+    file_scope: *id001
+  references: []
+- id: js-cors-wildcard
+  name: CORS 不要放开为 *
   severity: high
   category: javascript
   type: regex
   language: javascript
-  description: "setTimeout('code', ...) 会以类似 eval 的方式执行字符串，存在代码注入风险。"
-  rationale: "字符串形式的回调等价于 eval。"
-  fix_suggestion: "传入函数引用：setTimeout(() => {...}, ms)。"
-  enabled: true
+  description: 'Access-Control-Allow-Origin: * 允许任意站点读取响应。'
+  rationale: 通配符配合凭据时等同于放弃同源保护。
+  fix_suggestion: 改为白名单校验 Origin 后回显具体来源。
+  tags:
+  - security
+  - core
   match:
-    pattern: 'set(Timeout|Interval)\s*\(\s*["'']'
-    message: "setTimeout/setInterval 传入了字符串回调（等同 eval，存在注入风险）"
-    file_scope: {language: javascript, path_glob: "*.js"}
-
-- id: js-for-var
-  name: "for 循环避免使用 var"
+    pattern: Access-Control-Allow-Origin['\"]?\s*[,:]\s*['\"]\*
+    message: CORS 允许任意来源
+    file_scope: *id001
+  references: []
+- id: js-sql-concat
+  name: 不要拼接 SQL 字符串
+  severity: high
+  category: javascript
+  type: regex
+  language: javascript
+  description: 查询语句拼接变量会被注入。
+  rationale: 参数化查询才能把数据与语句分离。
+  fix_suggestion: 改用占位符 + 参数数组。
+  tags:
+  - security
+  - core
+  match:
+    pattern: (?i)(?:query|execute)\s*\(\s*[`'\"][^`'\"]*(?:SELECT|INSERT|UPDATE|DELETE)[^`'\"]*['\"`]\s*\+
+    message: SQL 语句由字符串拼接
+    file_scope: *id001
+  references: []
+- id: js-document-cookie
+  name: 谨慎使用 document.cookie
   severity: medium
   category: javascript
   type: regex
   language: javascript
-  description: "for 循环中使用 var 声明计数器会因作用域提升导致闭包/异步中的经典 bug。"
-  rationale: "循环变量应使用块级作用域。"
-  fix_suggestion: "改用 for (let i ...) 或使用 for...of / forEach。"
-  enabled: true
+  description: 未加 HttpOnly/Secure 的 cookie 可被脚本读取，易受 XSS 窃取。
+  rationale: 敏感凭据应放在 HttpOnly cookie 或内存中。
+  fix_suggestion: 由后端 Set-Cookie 并加 HttpOnly、Secure、SameSite。
+  tags:
+  - security
   match:
-    pattern: '\bfor\s*\([^)]*\bvar\b'
-    message: "for 循环中使用了 var，建议改用 let 以避免作用域问题"
-    file_scope: {language: javascript, path_glob: "*.js"}
+    pattern: \bdocument\.cookie\s*=
+    message: 脚本写入 cookie，注意敏感信息泄漏
+    file_scope: *id001
+  references: []
+- id: js-weak-hash
+  name: 不要用 MD5/SHA1 做安全摘要
+  severity: high
+  category: javascript
+  type: regex
+  language: javascript
+  description: MD5/SHA1 已可构造碰撞，不能用于签名或口令存储。
+  rationale: 碰撞攻击可伪造摘要结果。
+  fix_suggestion: 改用 SHA-256 及以上的哈希；口令用 bcrypt/scrypt/argon2。
+  tags:
+  - security
+  - core
+  match:
+    pattern: createHash\s*\(\s*['\"](?:md5|sha1)['\"]
+    message: 使用弱哈希算法
+    file_scope: *id001
+  references: []
+- id: js-alert
+  name: 生产代码不要用 alert
+  severity: info
+  category: javascript
+  type: regex
+  language: javascript
+  description: alert/confirm 会阻塞主线程且无法定制，属于调试残留。
+  rationale: 阻塞式弹窗不应出现在产品代码。
+  fix_suggestion: 改用页面内的提示组件。
+  tags:
+  - style
+  match:
+    pattern: \b(?:alert|confirm)\s*\(
+    message: 使用阻塞式弹窗
+    file_scope: *id001
+  references: []
+- id: js-todo-comment
+  name: 遗留 TODO/FIXME
+  severity: info
+  category: javascript
+  type: regex
+  language: javascript
+  description: 未完成的标记应进入任务系统。
+  rationale: 长期堆积的 TODO 会被遗忘。
+  fix_suggestion: 转为 issue 并在此引用编号。
+  tags:
+  - style
+  match:
+    pattern: (?i)//\s*(TODO|FIXME|XXX|HACK)\b
+    message: 遗留 TODO/FIXME
+    file_scope: *id001
+  references: []
+- id: js-then-without-catch
+  name: Promise 调用需处理拒绝
+  severity: medium
+  category: javascript
+  type: regex
+  language: javascript
+  description: 没有 catch/第二个参数的 then 链会吞掉拒绝，变成 unhandled rejection。
+  rationale: 未处理的 rejection 会导致进程告警或状态不一致。
+  fix_suggestion: 追加 .catch(...)，或改用 async/await + try/catch。
+  tags:
+  - reliability
+  - core
+  match:
+    pattern: \.then\s*\((?![^\n]*\.catch)[^\n]*\)\s*;
+    message: then 链未处理 rejection
+    file_scope: *id001
+  references: []

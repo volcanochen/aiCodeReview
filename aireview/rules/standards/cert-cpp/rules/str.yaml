@@ -1,0 +1,78 @@
+# CERT C++ — STR 类别
+- id: STR50-CPP
+  name: 字符串存储必须容纳字符与结尾 0
+  severity: critical
+  category: cert-cpp
+  type: regex
+  language: cpp
+  description: 用无界函数向固定缓冲区写字符串会溢出。
+  rationale: CERT C++ STR50-CPP：见规范原文。
+  fix_suggestion: 用 std::string 或 std::snprintf 并检查返回值。
+  tags:
+  - STR
+  - heuristic
+  match:
+    pattern: \b(?:strcpy|strcat|sprintf|gets)\s*\(
+    message: 使用了无界字符串函数，存在缓冲区溢出风险
+    file_scope:
+      language: cpp
+      path_glob: '*.cpp'
+  references:
+  - https://cmu-sei.github.io/secure-coding-standards/sei-cert-cpp-coding-standard/rules/characters-and-strings-str/
+- id: STR51-CPP
+  name: 不要用空指针构造 std::string
+  severity: high
+  category: cert-cpp
+  type: semantic
+  language: cpp
+  description: std::string(nullptr) 是未定义行为。
+  rationale: CERT C++ STR51-CPP：见规范原文。
+  fix_suggestion: 构造前判空，或用空字符串代替。
+  tags:
+  - STR
+  - semantic
+  match:
+    prompt: 判断该函数是否可能用空指针构造 std::string。若存在，violation=true。
+    context:
+      candidate_regex: std::string\s*\(|=\s*\w+\s*;
+      limit: 8
+  references:
+  - https://cmu-sei.github.io/secure-coding-standards/sei-cert-cpp-coding-standard/rules/characters-and-strings-str/
+- id: STR52-CPP
+  name: 使用对 basic_string 元素的合法引用/指针/迭代器
+  severity: high
+  category: cert-cpp
+  type: semantic
+  language: cpp
+  description: 字符串扩容后旧引用与迭代器失效。
+  rationale: CERT C++ STR52-CPP：见规范原文。
+  fix_suggestion: 扩容后重新获取，或先 reserve。
+  tags:
+  - STR
+  - semantic
+  match:
+    prompt: 判断该函数是否在字符串被修改后继续使用之前取得的引用或迭代器。若存在，violation=true。
+    context:
+      candidate_regex: \.c_str\(\)|\.data\(\)|\.append\(
+      limit: 8
+  references:
+  - https://cmu-sei.github.io/secure-coding-standards/sei-cert-cpp-coding-standard/rules/characters-and-strings-str/
+- id: STR53-CPP
+  name: 对元素访问做范围检查
+  severity: high
+  category: cert-cpp
+  type: semantic
+  language: cpp
+  description: 用 operator[] 越界访问字符串是未定义行为。
+  rationale: CERT C++ STR53-CPP：见规范原文。
+  fix_suggestion: 用 at() 或先比较 size()。
+  tags:
+  - STR
+  - semantic
+  match:
+    prompt: 判断该函数是否可能用 operator[] 越界访问字符串。若存在，violation=true。
+    context:
+      candidate_regex: \[[^\]]*\]
+      limit: 8
+  references:
+  - https://cmu-sei.github.io/secure-coding-standards/sei-cert-cpp-coding-standard/rules/characters-and-strings-str/

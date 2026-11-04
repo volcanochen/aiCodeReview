@@ -1,0 +1,152 @@
+# CERT C — MSC 类别
+- id: MSC30-C
+  name: 不要用 rand() 生成伪随机数
+  severity: high
+  category: cert-c
+  type: regex
+  language: c
+  description: rand() 的实现质量与周期因实现而异，且多个库函数可能共享同一状态，不适合安全用途。
+  rationale: CERT MSC30-C：rand() 不保证密码学质量。
+  fix_suggestion: 安全场景用 getrandom/arc4random/OpenSSL RAND_bytes；一般用途至少用 rand_r 并显式管理状态。
+  tags:
+  - MSC
+  - heuristic
+  match:
+    pattern: \brand\s*\(
+    message: 使用了 rand()，不适合安全相关随机数
+    file_scope: &id001
+      language: c
+      path_glob: '*.c'
+  references:
+  - https://cmu-sei.github.io/secure-coding-standards/sei-cert-c-coding-standard/rules/miscellaneous-msc/
+- id: MSC32-C
+  name: 正确为伪随机数生成器播种
+  severity: medium
+  category: cert-c
+  type: semantic
+  language: c
+  description: 未 srand 直接用 rand，或每次用同一常量播种，序列可预测。
+  rationale: CERT MSC32-C：PRNG 必须正确播种。
+  fix_suggestion: 在程序启动时用高质量熵源播种一次，不要重复播种。
+  tags:
+  - MSC
+  - semantic
+  match:
+    prompt: 判断该函数是否使用 rand() 但进程内从未播种，或用固定常量/时间戳重复播种。若存在，violation=true。
+    context:
+      candidate_regex: \brand\s*\(|\bsrand\s*\(
+      limit: 10
+  references:
+  - https://cmu-sei.github.io/secure-coding-standards/sei-cert-c-coding-standard/rules/miscellaneous-msc/
+- id: MSC33-C
+  name: 不要向 asctime 传入非法数据
+  severity: low
+  category: cert-c
+  type: semantic
+  language: c
+  description: tm 中字段超出范围（月>11、日>31、年越界）时 asctime 行为未定义。
+  rationale: CERT MSC33-C：tm 字段必须在使用前校验。
+  fix_suggestion: 用 strftime 并校验 tm 字段，或确保来源是 localtime/gmtime。
+  tags:
+  - MSC
+  - semantic
+  match:
+    prompt: 判断该函数是否手工构造 struct tm 后传给 asctime，且字段未做范围校验。若存在，violation=true。
+    context:
+      candidate_regex: \basctime\s*\(
+      limit: 10
+  references:
+  - https://cmu-sei.github.io/secure-coding-standards/sei-cert-c-coding-standard/rules/miscellaneous-msc/
+- id: MSC37-C
+  name: 非 void 函数不得走到末尾而不返回
+  severity: high
+  category: cert-c
+  type: semantic
+  language: c
+  description: 函数声明返回非 void，但存在不返回值的控制路径（C11 起为未定义行为）。
+  rationale: CERT MSC37-C：非 void 函数的所有路径都必须返回值。
+  fix_suggestion: 补齐 return，或在末尾加默认返回并说明。
+  tags:
+  - MSC
+  - semantic
+  match:
+    prompt: 判断该非 void 函数是否存在走到函数末尾而不返回值的路径（注意 switch 未覆盖所有分支）。若存在，violation=true。
+    context:
+      candidate_regex: \b(?:int|char|long|short|float|double|size_t|\w+_t)\s+\w+\s*\(
+      limit: 10
+  references:
+  - https://cmu-sei.github.io/secure-coding-standards/sei-cert-c-coding-standard/rules/miscellaneous-msc/
+- id: MSC38-C
+  name: 不要将预定义标识符当作对象使用
+  severity: low
+  category: cert-c
+  type: regex
+  language: c
+  description: __func__、__FILE__ 等可能只以宏形式实现，取地址或用 sizeof 会出错。
+  rationale: CERT MSC38-C：预定义标识符不保证是对象。
+  fix_suggestion: 先用变量保存，再对变量取地址。
+  tags:
+  - MSC
+  - heuristic
+  match:
+    pattern: '#\s*undef\s+(?:__func__|__FILE__|__LINE__|__DATE__|__TIME__)|&\s*(?:__func__|__FILE__)'
+    message: 对预定义标识符取地址或 undef，破坏了其实现假设
+    file_scope: *id001
+  references:
+  - https://cmu-sei.github.io/secure-coding-standards/sei-cert-c-coding-standard/rules/miscellaneous-msc/
+- id: MSC39-C
+  name: 不要对状态不确定的 va_list 使用 va_arg
+  severity: medium
+  category: cert-c
+  type: semantic
+  language: c
+  description: va_list 已被 va_arg 消耗或被传递后，再读取会得到错误值。
+  rationale: CERT MSC39-C：va_list 的状态必须明确。
+  fix_suggestion: 需要多次遍历时用 va_copy 复制一份。
+  tags:
+  - MSC
+  - semantic
+  match:
+    prompt: 判断该函数是否在 va_list 已被消耗或传给别人之后继续对其调用 va_arg。若存在，violation=true。
+    context:
+      candidate_regex: \bva_(start|arg|copy|end)\b
+      limit: 10
+  references:
+  - https://cmu-sei.github.io/secure-coding-standards/sei-cert-c-coding-standard/rules/miscellaneous-msc/
+- id: MSC40-C
+  name: 不要违反约束（constraint）
+  severity: medium
+  category: cert-c
+  type: semantic
+  language: c
+  description: 违反标准的约束条款（如对 const 对象赋值、数组赋值、位域取地址），编译器可拒绝编译。
+  rationale: CERT MSC40-C：约束违规的程序不是合法 C 程序。
+  fix_suggestion: 按标准要求修正代码，不要依赖编译器扩展放行。
+  tags:
+  - MSC
+  - semantic
+  match:
+    prompt: 判断该函数是否存在对 const 对象赋值、对数组整体赋值、对位域取地址等约束违规。若存在，violation=true。
+    context:
+      candidate_regex: const|=
+      limit: 10
+  references:
+  - https://cmu-sei.github.io/secure-coding-standards/sei-cert-c-coding-standard/rules/miscellaneous-msc/
+- id: MSC41-C
+  name: 不要硬编码敏感信息
+  severity: critical
+  category: cert-c
+  type: regex
+  language: c
+  description: 源码里硬编码口令、密钥、令牌，会随二进制/仓库泄漏，且无法轮换。
+  rationale: CERT MSC41-C：敏感信息不得硬编码。
+  fix_suggestion: 改为从安全配置、环境变量或密钥管理服务读取。
+  tags:
+  - MSC
+  - heuristic
+  match:
+    pattern: (?i)\b(?:password|passwd|pwd|secret|api[_-]?key|access[_-]?key|token|private[_-]?key)\b\s*=\s*"[^"]{3,}"
+    message: 疑似硬编码敏感信息
+    file_scope: *id001
+  references:
+  - https://cmu-sei.github.io/secure-coding-standards/sei-cert-c-coding-standard/rules/miscellaneous-msc/

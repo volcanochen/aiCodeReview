@@ -1,11 +1,37 @@
 id: javascript
 name: "JavaScript / TypeScript 编码标准包"
-version: "0.1.0"
+version: "1.0.0"
 builtin: true
 languages: [javascript]
 description: >-
-  JavaScript（含 TypeScript）常见反模式与安全隐患的自动化检测子集。涵盖作用域、
-  相等比较、动态代码执行、XSS 风险等。当前以正则（regex）规则实现，适用于 .js/.jsx/.ts/.tsx。
+  JavaScript（含 TypeScript）常见反模式与安全隐患规则集，覆盖 XSS/原型污染/命令注入/弱随机等安全问题、
+  语言陷阱与风格三类，共 26 条。全部为 regex 规则，适用于 .js/.jsx/.ts/.tsx。
 reference: "https://developer.mozilla.org/en-US/docs/Web/JavaScript"
 coverage_note: >-
-  本包聚焦可静态自动化的高价值规则；依赖深层语义的规则可后续以 semantic 类型接入。
+  JS 没有官方「规则编号全集」，业界参照 ESLint（内置 300+ 规则，recommended 约 60 条）。
+  本包选取可静态自动化且误报低的高价值规则；依赖作用域/类型信息的规则（如 no-unused-vars）未纳入。
+default_subsets: [all]
+subsets:
+  - id: all
+    name: "全集（26 条）"
+    description: "全部规则，均为静态正则，速度快。"
+  - id: core
+    name: "核心高危（推荐）"
+    description: "XSS、原型污染、注入、弱随机、弱哈希等最关键的规则。"
+    tags: [core]
+  - id: security
+    name: "安全"
+    description: "XSS、原型污染、命令注入、弱随机/弱哈希、CORS、明文 HTTP、敏感信息。"
+    tags: [security]
+  - id: bugs
+    name: "易错点"
+    description: "宽松相等、var 作用域、with、parseInt 基数、isNaN、document.write。"
+    tags: [bugs]
+  - id: reliability
+    name: "健壮性"
+    description: "Promise 拒绝未处理。"
+    tags: [reliability]
+  - id: style
+    name: "风格与可维护性"
+    description: "console 输出、alert、TODO。"
+    tags: [style]

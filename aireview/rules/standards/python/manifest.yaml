@@ -1,12 +1,41 @@
 id: python
 name: "Python 编码标准包"
-version: "0.1.0"
+version: "1.0.0"
 builtin: true
 languages: [python]
 description: >-
-  Python 常见反模式与安全隐患的自动化检测子集。涵盖危险函数调用、异常处理、
-  可变默认参数、不安全的反序列化与命令执行等。当前以正则（regex）规则实现，
-  不依赖 tree-sitter（Python 的 AST/语义规则需另行接入）。
-reference: "https://docs.python.org/3/library/exceptions.html"
+  面向 Python 的常见反模式与安全隐患规则集，覆盖安全（注入/反序列化/TLS/随机数）、异常处理、
+  可变对象陷阱、健壮性与风格五类，共 29 条。全部为 regex 规则，不依赖树解析器与本地模型，离线可用。
+reference: "https://peps.python.org/pep-0008/"
 coverage_note: >-
-  本包聚焦可静态自动化的高价值规则；依赖深层语义的规则可后续以 semantic 类型接入。
+  Python 没有官方「规则编号全集」（PEP 8 是风格指南、Pylint 有 200+ 检查项），本包选取可静态自动化、
+  误报低的高价值规则。需要跨函数数据流的检查（如未使用变量、复杂控制流）未纳入。
+default_subsets: [all]
+subsets:
+  - id: all
+    name: "全集（29 条）"
+    description: "全部规则，均为静态正则，速度快。"
+  - id: core
+    name: "核心高危（推荐）"
+    description: "安全与易错点里最关键的规则，适合提交前快速自查。"
+    tags: [core]
+  - id: security
+    name: "安全"
+    description: "注入、反序列化、TLS、随机数、硬编码凭据、SQL 拼接。"
+    tags: [security]
+  - id: errors
+    name: "异常处理"
+    description: "裸 except、过宽捕获、静默 pass、异常哨兵误用。"
+    tags: [errors]
+  - id: bugs
+    name: "易错点"
+    description: "可变默认参数/类属性、遍历中修改、类型判断、finally 跳转、编码缺失。"
+    tags: [bugs]
+  - id: reliability
+    name: "健壮性"
+    description: "超时缺失、子进程返回码未检查。"
+    tags: [reliability]
+  - id: style
+    name: "风格与可维护性"
+    description: "PEP 8 相关：通配符导入、布尔比较、global、裸 print、行长、TODO。"
+    tags: [style]

@@ -1,0 +1,172 @@
+# CERT C++ — OOP 类别
+- id: OOP50-CPP
+  name: 不要在构造/析构函数中调用虚函数
+  severity: high
+  category: cert-cpp
+  type: semantic
+  language: cpp
+  description: 构造/析构期间虚调用不会派发到派生类，得到非预期行为。
+  rationale: CERT C++ OOP50-CPP：见规范原文。
+  fix_suggestion: 改用两阶段初始化或工厂函数。
+  tags:
+  - OOP
+  - semantic
+  match:
+    prompt: 判断该构造函数或析构函数是否调用了虚函数（含间接调用）。若存在，violation=true。
+    context:
+      candidate_regex: ~\w+\s*\(|\w+\s*\(.*\)\s*:\s*\w+\(
+      limit: 8
+  references:
+  - https://cmu-sei.github.io/secure-coding-standards/sei-cert-cpp-coding-standard/rules/oop-oop/
+- id: OOP51-CPP
+  name: 不要切分派生对象
+  severity: high
+  category: cert-cpp
+  type: semantic
+  language: cpp
+  description: 按值把派生类对象赋给基类对象会丢失派生部分。
+  rationale: CERT C++ OOP51-CPP：见规范原文。
+  fix_suggestion: 用引用/指针传递，或加 clone() 语义。
+  tags:
+  - OOP
+  - semantic
+  match:
+    prompt: 判断该函数是否按值把派生类对象赋给基类对象（对象切片）。若存在，violation=true。
+    context:
+      candidate_regex: =\s*\w+\s*;|\(\s*\w+\s*\)
+      limit: 8
+  references:
+  - https://cmu-sei.github.io/secure-coding-standards/sei-cert-cpp-coding-standard/rules/oop-oop/
+- id: OOP52-CPP
+  name: 不要删除没有虚析构函数的多态对象
+  severity: critical
+  category: cert-cpp
+  type: semantic
+  language: cpp
+  description: 通过基类指针 delete 派生对象而基类析构非虚，派生析构不会执行。
+  rationale: CERT C++ OOP52-CPP：见规范原文。
+  fix_suggestion: 基类析构声明为 virtual。
+  tags:
+  - OOP
+  - semantic
+  match:
+    prompt: 判断该函数是否通过基类指针 delete 了析构函数非虚的多态对象。若存在，violation=true。
+    context:
+      candidate_regex: \bdelete\b
+      limit: 8
+  references:
+  - https://cmu-sei.github.io/secure-coding-standards/sei-cert-cpp-coding-standard/rules/oop-oop/
+- id: OOP53-CPP
+  name: 构造函数成员初始化列表按声明顺序书写
+  severity: low
+  category: cert-cpp
+  type: semantic
+  language: cpp
+  description: 初始化顺序由声明顺序决定，与列表顺序不一致容易误读并引入未初始化依赖。
+  rationale: CERT C++ OOP53-CPP：见规范原文。
+  fix_suggestion: 按成员声明顺序书写初始化列表。
+  tags:
+  - OOP
+  - semantic
+  match:
+    prompt: 判断该构造函数的初始化列表顺序是否与成员声明顺序不一致。若存在，violation=true。
+    context:
+      candidate_regex: :\s*\w+\s*\(
+      limit: 8
+  references:
+  - https://cmu-sei.github.io/secure-coding-standards/sei-cert-cpp-coding-standard/rules/oop-oop/
+- id: OOP54-CPP
+  name: 正确处理自赋值
+  severity: medium
+  category: cert-cpp
+  type: semantic
+  language: cpp
+  description: 赋值运算符未处理 this == &other，自赋值时先释放资源会丢数据。
+  rationale: CERT C++ OOP54-CPP：见规范原文。
+  fix_suggestion: 在赋值运算符开头判断自赋值，或用 copy-and-swap。
+  tags:
+  - OOP
+  - semantic
+  match:
+    prompt: 判断该赋值运算符是否未处理自赋值（缺少 this == &other 检查且非 copy-and-swap）。若存在，violation=true。
+    context:
+      candidate_regex: operator\s*=
+      limit: 8
+  references:
+  - https://cmu-sei.github.io/secure-coding-standards/sei-cert-cpp-coding-standard/rules/oop-oop/
+- id: OOP55-CPP
+  name: 不要用成员指针访问不存在的成员
+  severity: high
+  category: cert-cpp
+  type: semantic
+  language: cpp
+  description: 对不存在的成员使用 .* 或 ->* 是未定义行为。
+  rationale: CERT C++ OOP55-CPP：见规范原文。
+  fix_suggestion: 确保成员指针所指成员确实存在于该类型。
+  tags:
+  - OOP
+  - semantic
+  match:
+    prompt: 判断该函数是否通过成员指针访问了不存在或类型不匹配的成员。若存在，violation=true。
+    context:
+      candidate_regex: \.\*|->\*
+      limit: 8
+  references:
+  - https://cmu-sei.github.io/secure-coding-standards/sei-cert-cpp-coding-standard/rules/oop-oop/
+- id: OOP56-CPP
+  name: 遵守替换式处理器（new_handler）的要求
+  severity: medium
+  category: cert-cpp
+  type: semantic
+  language: cpp
+  description: 自定义 new_handler 行为不符合标准，会让分配失败处理失效。
+  rationale: CERT C++ OOP56-CPP：见规范原文。
+  fix_suggestion: 按标准实现 set_new_handler 语义。
+  tags:
+  - OOP
+  - semantic
+  match:
+    prompt: 判断该文件是否替换了 new_handler 但行为不符合标准要求。若存在，violation=true。
+    context:
+      candidate_regex: new_handler|set_new_handler
+      limit: 8
+  references:
+  - https://cmu-sei.github.io/secure-coding-standards/sei-cert-cpp-coding-standard/rules/oop-oop/
+- id: OOP57-CPP
+  name: 优先使用标准库而非 C 库函数处理类对象
+  severity: medium
+  category: cert-cpp
+  type: semantic
+  language: cpp
+  description: 对非平凡类型用 memcpy/memset 会破坏不变量。
+  rationale: CERT C++ OOP57-CPP：见规范原文。
+  fix_suggestion: 用拷贝构造、赋值运算符、std::copy/std::fill。
+  tags:
+  - OOP
+  - semantic
+  match:
+    prompt: 判断该函数是否对非平凡类对象使用 memcpy/memset/memcmp。若存在，violation=true。
+    context:
+      candidate_regex: memcpy|memset|memcmp
+      limit: 8
+  references:
+  - https://cmu-sei.github.io/secure-coding-standards/sei-cert-cpp-coding-standard/rules/oop-oop/
+- id: OOP58-CPP
+  name: 拷贝操作不得修改源对象
+  severity: medium
+  category: cert-cpp
+  type: semantic
+  language: cpp
+  description: 拷贝构造/赋值里修改源对象，使 const 源无法拷贝并破坏语义。
+  rationale: CERT C++ OOP58-CPP：见规范原文。
+  fix_suggestion: 拷贝操作只读源对象，参数用 const 引用。
+  tags:
+  - OOP
+  - semantic
+  match:
+    prompt: 判断该拷贝构造函数或赋值运算符是否修改了源对象。若存在，violation=true。
+    context:
+      candidate_regex: operator\s*=|\(\s*const\s+\w+\s*&
+      limit: 8
+  references:
+  - https://cmu-sei.github.io/secure-coding-standards/sei-cert-cpp-coding-standard/rules/oop-oop/

@@ -1,0 +1,247 @@
+# CERT C++ — ERR 类别
+- id: ERR50-CPP
+  name: 不要突然终止程序
+  severity: medium
+  category: cert-cpp
+  type: semantic
+  language: cpp
+  description: 在可恢复场景调用 std::terminate/abort/exit 会让上层无法处理。
+  rationale: CERT C++ ERR50-CPP：见规范原文。
+  fix_suggestion: 抛出异常或返回错误码，由调用方决定。
+  tags:
+  - ERR
+  - semantic
+  match:
+    prompt: 判断该函数是否在可恢复的错误路径上调用 terminate/abort/exit。若存在，violation=true。
+    context:
+      candidate_regex: terminate|abort|exit
+      limit: 8
+  references:
+  - https://cmu-sei.github.io/secure-coding-standards/sei-cert-cpp-coding-standard/rules/error-handling-err/
+- id: ERR51-CPP
+  name: 处理所有异常
+  severity: high
+  category: cert-cpp
+  type: semantic
+  language: cpp
+  description: catch(...) 吞掉一切或完全缺少 catch，会让程序处于不一致状态。
+  rationale: CERT C++ ERR51-CPP：见规范原文。
+  fix_suggestion: 捕获具体类型；catch(...) 至少记录并转换为可处理错误。
+  tags:
+  - ERR
+  - semantic
+  match:
+    prompt: 判断该函数是否吞掉异常（catch(...) 空实现）或缺少必要捕获。若存在，violation=true。
+    context:
+      candidate_regex: catch
+      limit: 8
+  references:
+  - https://cmu-sei.github.io/secure-coding-standards/sei-cert-cpp-coding-standard/rules/error-handling-err/
+- id: ERR52-CPP
+  name: 不要使用 setjmp/longjmp
+  severity: high
+  category: cert-cpp
+  type: regex
+  language: cpp
+  description: longjmp 跳过析构函数与栈展开，破坏 RAII。
+  rationale: CERT C++ ERR52-CPP：见规范原文。
+  fix_suggestion: 改用异常或返回错误码。
+  tags:
+  - ERR
+  - heuristic
+  match:
+    pattern: \b(?:setjmp|longjmp)\s*\(
+    message: 使用了 setjmp/longjmp，会跳过析构与栈展开
+    file_scope: &id001
+      language: cpp
+      path_glob: '*.cpp'
+  references:
+  - https://cmu-sei.github.io/secure-coding-standards/sei-cert-cpp-coding-standard/rules/error-handling-err/
+- id: ERR53-CPP
+  name: 构造/析构的 function-try-block 中不要引用基类或成员
+  severity: medium
+  category: cert-cpp
+  type: semantic
+  language: cpp
+  description: 此时对象可能未构造或已析构，引用其成员是未定义行为。
+  rationale: CERT C++ ERR53-CPP：见规范原文。
+  fix_suggestion: 在 handler 里只做记录，不要访问对象状态。
+  tags:
+  - ERR
+  - semantic
+  match:
+    prompt: 判断构造函数或析构函数的 function-try-block handler 是否访问了基类或成员。若存在，violation=true。
+    context:
+      candidate_regex: try\s*(?::|$)
+      limit: 8
+  references:
+  - https://cmu-sei.github.io/secure-coding-standards/sei-cert-cpp-coding-standard/rules/error-handling-err/
+- id: ERR54-CPP
+  name: catch 子句按从派生到基类的顺序排列
+  severity: high
+  category: cert-cpp
+  type: semantic
+  language: cpp
+  description: 先捕获基类会让派生类分支永远不可达。
+  rationale: CERT C++ ERR54-CPP：见规范原文。
+  fix_suggestion: 先写派生类捕获，再写基类。
+  tags:
+  - ERR
+  - semantic
+  match:
+    prompt: 判断该函数是否有基类 catch 排在派生类之前。若存在，violation=true。
+    context:
+      candidate_regex: catch
+      limit: 8
+  references:
+  - https://cmu-sei.github.io/secure-coding-standards/sei-cert-cpp-coding-standard/rules/error-handling-err/
+- id: ERR55-CPP
+  name: 遵守异常规范
+  severity: medium
+  category: cert-cpp
+  type: semantic
+  language: cpp
+  description: 声明 noexcept 的函数抛出异常会直接 terminate。
+  rationale: CERT C++ ERR55-CPP：见规范原文。
+  fix_suggestion: 确保 noexcept 函数不抛，或去掉该规范。
+  tags:
+  - ERR
+  - semantic
+  match:
+    prompt: 判断标了 noexcept 的函数是否可能抛出异常。若存在，violation=true。
+    context:
+      candidate_regex: noexcept
+      limit: 8
+  references:
+  - https://cmu-sei.github.io/secure-coding-standards/sei-cert-cpp-coding-standard/rules/error-handling-err/
+- id: ERR56-CPP
+  name: 保证异常安全
+  severity: high
+  category: cert-cpp
+  type: semantic
+  language: cpp
+  description: 抛出异常后资源泄漏或对象处于半更新状态。
+  rationale: CERT C++ ERR56-CPP：见规范原文。
+  fix_suggestion: 用 RAII 管理资源，先完成可能失败的操作再修改状态。
+  tags:
+  - ERR
+  - semantic
+  match:
+    prompt: 判断该函数在抛出异常时是否会泄漏资源或留下半更新状态。若存在，violation=true。
+    context:
+      candidate_regex: new|throw
+      limit: 8
+  references:
+  - https://cmu-sei.github.io/secure-coding-standards/sei-cert-cpp-coding-standard/rules/error-handling-err/
+- id: ERR57-CPP
+  name: 处理异常时不要泄漏资源
+  severity: high
+  category: cert-cpp
+  type: semantic
+  language: cpp
+  description: catch 块中提前 return 或 rethrow 前未释放已获取资源。
+  rationale: CERT C++ ERR57-CPP：见规范原文。
+  fix_suggestion: 用 RAII 对象持有资源。
+  tags:
+  - ERR
+  - semantic
+  match:
+    prompt: 判断该 catch 块是否在释放资源前就返回或重新抛出。若存在，violation=true。
+    context:
+      candidate_regex: catch
+      limit: 8
+  references:
+  - https://cmu-sei.github.io/secure-coding-standards/sei-cert-cpp-coding-standard/rules/error-handling-err/
+- id: ERR58-CPP
+  name: 处理 main() 之前抛出的异常
+  severity: medium
+  category: cert-cpp
+  type: semantic
+  language: cpp
+  description: 静态初始化期间抛异常会导致 terminate。
+  rationale: CERT C++ ERR58-CPP：见规范原文。
+  fix_suggestion: 把可能失败的工作移到 main 内。
+  tags:
+  - ERR
+  - semantic
+  match:
+    prompt: 判断该文件是否存在可能在静态初始化阶段抛异常的全局对象构造。若存在，violation=true。
+    context:
+      candidate_regex: ^\w+\s+\w+\s*[=({]
+      limit: 8
+  references:
+  - https://cmu-sei.github.io/secure-coding-standards/sei-cert-cpp-coding-standard/rules/error-handling-err/
+- id: ERR59-CPP
+  name: 不要跨执行边界抛异常
+  severity: high
+  category: cert-cpp
+  type: semantic
+  language: cpp
+  description: 跨 C ABI / 动态库边界抛异常行为未定义。
+  rationale: CERT C++ ERR59-CPP：见规范原文。
+  fix_suggestion: 在边界处捕获并转换为错误码。
+  tags:
+  - ERR
+  - semantic
+  match:
+    prompt: 判断该函数是否在 extern "C" 或回调边界上让异常逃出。若存在，violation=true。
+    context:
+      candidate_regex: extern\s+"C"
+      limit: 8
+  references:
+  - https://cmu-sei.github.io/secure-coding-standards/sei-cert-cpp-coding-standard/rules/error-handling-err/
+- id: ERR60-CPP
+  name: 异常对象的拷贝构造必须 nothrow
+  severity: medium
+  category: cert-cpp
+  type: semantic
+  language: cpp
+  description: 抛出时拷贝构造若再抛异常会 terminate。
+  rationale: CERT C++ ERR60-CPP：见规范原文。
+  fix_suggestion: 异常类声明 noexcept 拷贝构造。
+  tags:
+  - ERR
+  - semantic
+  match:
+    prompt: 判断该异常类的拷贝构造函数是否可能抛出异常。若存在，violation=true。
+    context:
+      candidate_regex: class\s+\w+|struct\s+\w+
+      limit: 8
+  references:
+  - https://cmu-sei.github.io/secure-coding-standards/sei-cert-cpp-coding-standard/rules/error-handling-err/
+- id: ERR61-CPP
+  name: 按左值引用捕获异常
+  severity: medium
+  category: cert-cpp
+  type: regex
+  language: cpp
+  description: 按值捕获会切片并额外拷贝；按指针捕获容易悬垂。
+  rationale: CERT C++ ERR61-CPP：见规范原文。
+  fix_suggestion: 写成 catch (const T& e)。
+  tags:
+  - ERR
+  - heuristic
+  match:
+    pattern: \bcatch\s*\(\s*(?:const\s+)?[A-Za-z_]\w*(?:::\w+)*(?:<[^>]*>)?\s+[A-Za-z_]\w*\s*\)
+    message: 异常按值捕获，可能切片
+    file_scope: *id001
+  references:
+  - https://cmu-sei.github.io/secure-coding-standards/sei-cert-cpp-coding-standard/rules/error-handling-err/
+- id: ERR62-CPP
+  name: 字符串转数字时必须检测错误
+  severity: high
+  category: cert-cpp
+  type: regex
+  language: cpp
+  description: atoi/atof 无法报告失败，静默返回 0。
+  rationale: CERT C++ ERR62-CPP：见规范原文。
+  fix_suggestion: 改用 std::stoi/std::strtol 并检查异常或 endptr。
+  tags:
+  - ERR
+  - heuristic
+  match:
+    pattern: \b(?:atoi|atol|atoll|atof)\s*\(
+    message: 使用 atoi/atof 等无法报告错误的转换函数
+    file_scope: *id001
+  references:
+  - https://cmu-sei.github.io/secure-coding-standards/sei-cert-cpp-coding-standard/rules/error-handling-err/

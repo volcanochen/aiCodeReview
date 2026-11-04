@@ -1,0 +1,115 @@
+# CERT C — ARR 类别
+- id: ARR30-C
+  name: 不要构造或使用越界指针与下标
+  severity: critical
+  category: cert-c
+  type: semantic
+  language: c
+  description: 下标或指针运算超出数组边界，读写越界属于未定义行为，是缓冲区溢出的直接来源。
+  rationale: CERT ARR30-C：越界访问属于未定义行为。
+  fix_suggestion: 访问前校验下标上界（含 <= 与 < 的常见笔误）；用 sizeof(arr)/sizeof(arr[0]) 求长度。
+  tags:
+  - ARR
+  - semantic
+  match:
+    prompt: 判断该函数是否存在数组下标或指针运算可能越界（循环条件用 <=、用户输入直接做下标、memcpy 长度大于缓冲区）。若存在，violation=true，message 指出位置。
+    context:
+      candidate_regex: \[|\b(memcpy|memmove|strncpy|strncat)\s*\(
+      limit: 10
+  references:
+  - https://cmu-sei.github.io/secure-coding-standards/sei-cert-c-coding-standard/rules/arrays-arr/
+- id: ARR32-C
+  name: 保证变长数组的尺寸参数有效
+  severity: high
+  category: cert-c
+  type: semantic
+  language: c
+  description: VLA 长度来自未校验的输入，可能为 0 或负数、或大到栈溢出。
+  rationale: CERT ARR32-C：VLA 尺寸必须为正且在合理范围。
+  fix_suggestion: 对长度做范围检查；大缓冲区改用堆分配。
+  tags:
+  - ARR
+  - semantic
+  match:
+    prompt: 判断该函数是否用未校验的变量声明变长数组（如 char buf[n]）且 n 来自输入。若存在，violation=true。
+    context:
+      candidate_regex: \[\s*\w+\s*\]\s*;
+      limit: 10
+  references:
+  - https://cmu-sei.github.io/secure-coding-standards/sei-cert-c-coding-standard/rules/arrays-arr/
+- id: ARR36-C
+  name: 不要对不属于同一数组的指针做减法或比较
+  severity: high
+  category: cert-c
+  type: semantic
+  language: c
+  description: 两个指针指向不同数组时相减/比较是未定义行为。
+  rationale: CERT ARR36-C：不同数组的指针运算未定义。
+  fix_suggestion: 改用长度/下标比较，或确保两者来自同一数组。
+  tags:
+  - ARR
+  - semantic
+  match:
+    prompt: 判断该函数是否存在两个可能来自不同数组的指针相减或大小比较。若存在，violation=true。
+    context:
+      candidate_regex: \w+\s*-\s*\w+|[<>]=?\s*\w+
+      limit: 10
+  references:
+  - https://cmu-sei.github.io/secure-coding-standards/sei-cert-c-coding-standard/rules/arrays-arr/
+- id: ARR37-C
+  name: 不要对非数组对象的指针做整数加减
+  severity: medium
+  category: cert-c
+  type: semantic
+  language: c
+  description: 对单个对象（非数组）的地址做 +1/-1 会越过对象边界，即使不解引用也未定义。
+  rationale: CERT ARR37-C：单对象指针算术越界未定义。
+  fix_suggestion: 改用数组或显式索引；确实需要遍历时把对象声明为数组。
+  tags:
+  - ARR
+  - semantic
+  match:
+    prompt: 判断该函数是否对单个（非数组）对象的指针做了整数加减。若存在，violation=true。
+    context:
+      candidate_regex: '&\s*\w+\s*[+-]|[+-]\s*\d'
+      limit: 10
+  references:
+  - https://cmu-sei.github.io/secure-coding-standards/sei-cert-c-coding-standard/rules/arrays-arr/
+- id: ARR38-C
+  name: 保证库函数不会构造非法指针
+  severity: high
+  category: cert-c
+  type: semantic
+  language: c
+  description: 把越界指针传给 memcpy/strcpy 等库函数，即使不直接解引用也是未定义行为。
+  rationale: CERT ARR38-C：库函数的指针参数必须指向有效对象。
+  fix_suggestion: 调用前校验指针与长度都在缓冲区内。
+  tags:
+  - ARR
+  - semantic
+  match:
+    prompt: 判断该函数调用内存/字符串库函数时是否可能传入越界指针或超出缓冲区的长度。若存在，violation=true。
+    context:
+      candidate_regex: \b(memcpy|memmove|strcpy|strncpy|strcat|memset)\s*\(
+      limit: 10
+  references:
+  - https://cmu-sei.github.io/secure-coding-standards/sei-cert-c-coding-standard/rules/arrays-arr/
+- id: ARR39-C
+  name: 不要给指针加上缩放后的整数
+  severity: medium
+  category: cert-c
+  type: semantic
+  language: c
+  description: pointer + n*sizeof(T) 会被编译器再乘一次 sizeof(T)，实际偏移是 n*sizeof(T)^2。
+  rationale: CERT ARR39-C：指针算术自带缩放。
+  fix_suggestion: 直接写 pointer + n，不要手动乘 sizeof。
+  tags:
+  - ARR
+  - semantic
+  match:
+    prompt: 判断该函数是否对指针加了含 sizeof 的表达式（如 p + n * sizeof(T)）。若存在，violation=true，message 指出表达式。
+    context:
+      candidate_regex: sizeof
+      limit: 10
+  references:
+  - https://cmu-sei.github.io/secure-coding-standards/sei-cert-c-coding-standard/rules/arrays-arr/

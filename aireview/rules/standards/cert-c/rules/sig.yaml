@@ -1,0 +1,76 @@
+# CERT C — SIG 类别
+- id: SIG30-C
+  name: 信号处理函数中只能调用异步信号安全函数
+  severity: critical
+  category: cert-c
+  type: graph
+  language: c
+  description: 在信号处理函数里调用 malloc/printf/free 等非异步信号安全函数，可能与主流程中断冲突导致死锁或堆损坏。
+  rationale: CERT SIG30-C：信号处理函数只能调用异步信号安全函数。
+  fix_suggestion: 处理函数里只置 volatile sig_atomic_t 标志，主循环再做事；或用 self-pipe/signalfd。
+  tags:
+  - SIG
+  - graph
+  match:
+    analyzer: signal_safety
+    params:
+      max_depth: 8
+  references:
+  - https://cmu-sei.github.io/secure-coding-standards/sei-cert-c-coding-standard/rules/signals-sig/
+- id: SIG31-C
+  name: 不要在信号处理函数中访问共享对象
+  severity: high
+  category: cert-c
+  type: semantic
+  language: c
+  description: 对非 volatile sig_atomic_t 的共享对象读写，在信号中断时可能看到中间状态。
+  rationale: CERT SIG31-C：信号处理函数中的共享访问必须用 sig_atomic_t + volatile。
+  fix_suggestion: 共享标志用 volatile sig_atomic_t，其他数据交给主流程处理。
+  tags:
+  - SIG
+  - semantic
+  match:
+    prompt: 判断该信号处理函数是否读写了非 volatile sig_atomic_t 的全局/静态对象。若存在，violation=true，message 指出对象。
+    context:
+      candidate_regex: \bsignal\s*\(|\bsigaction\s*\(
+      limit: 10
+  references:
+  - https://cmu-sei.github.io/secure-coding-standards/sei-cert-c-coding-standard/rules/signals-sig/
+- id: SIG34-C
+  name: 不要在可中断的信号处理函数中调用 signal()
+  severity: medium
+  category: cert-c
+  type: semantic
+  language: c
+  description: 在信号处理函数内用 signal() 重新注册，行为在部分实现下未定义，且可能丢失信号。
+  rationale: CERT SIG34-C：signal() 不是异步信号安全的。
+  fix_suggestion: 在启动阶段用 sigaction 一次性设置好；处理函数内不要调用 signal()。
+  tags:
+  - SIG
+  - semantic
+  match:
+    prompt: 判断该信号处理函数内部是否调用了 signal()。若存在，violation=true。
+    context:
+      candidate_regex: \bsignal\s*\(|\bsigaction\s*\(
+      limit: 10
+  references:
+  - https://cmu-sei.github.io/secure-coding-standards/sei-cert-c-coding-standard/rules/signals-sig/
+- id: SIG35-C
+  name: 不要从计算异常的信号处理函数中返回
+  severity: medium
+  category: cert-c
+  type: semantic
+  language: c
+  description: SIGFPE/SIGILL/SIGSEGV 由计算异常触发，处理函数返回后会重新执行出错指令，形成死循环。
+  rationale: CERT SIG35-C：计算异常的信号处理函数不应返回。
+  fix_suggestion: 记录信息后 _exit 或用 siglongjmp 跳出（注意清理）。
+  tags:
+  - SIG
+  - semantic
+  match:
+    prompt: 判断该计算异常（SIGFPE/SIGILL/SIGSEGV）的处理函数是否正常 return 而没有终止或跳转。若存在，violation=true。
+    context:
+      candidate_regex: \bsignal\s*\(|\bsigaction\s*\(
+      limit: 10
+  references:
+  - https://cmu-sei.github.io/secure-coding-standards/sei-cert-c-coding-standard/rules/signals-sig/

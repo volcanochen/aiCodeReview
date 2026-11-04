@@ -1,0 +1,283 @@
+# CERT C — EXP 类别
+- id: EXP30-C
+  name: 不要依赖副作用求值顺序
+  severity: medium
+  category: cert-c
+  type: regex
+  language: c
+  description: 同一表达式里对同一对象既修改又读取（如 i++ + i），求值顺序未规定，结果随编译器不同。
+  rationale: CERT EXP30-C：未序列化的副作用导致未定义/未指定行为。
+  fix_suggestion: 把有副作用的子表达式拆成独立语句。
+  tags:
+  - EXP
+  - heuristic
+  match:
+    pattern: \b(\w+)\s*\+\+[^;\n]*?[\+\-\*/%][^;\n]*?\b\1\b|\b(\w+)\b[^;\n]*?[\+\-\*/%][^;\n]*?\b\2\s*\+\+
+    message: 同一表达式内对同一对象既读又改，依赖了未规定的求值顺序
+    file_scope: &id001
+      language: c
+      path_glob: '*.c'
+  references:
+  - https://cmu-sei.github.io/secure-coding-standards/sei-cert-c-coding-standard/rules/expressions-exp/
+- id: EXP32-C
+  name: 不要通过非 volatile 引用访问 volatile 对象
+  severity: medium
+  category: cert-c
+  type: semantic
+  language: c
+  description: 把 volatile 对象强制转换为非 volatile 指针再访问，编译器可能缓存或重排访问，破坏 volatile 语义。
+  rationale: CERT EXP32-C：volatile 语义只对 volatile 限定的访问生效。
+  fix_suggestion: 保持 volatile 限定，不要把 volatile 指针赋给非 volatile 指针。
+  tags:
+  - EXP
+  - semantic
+  match:
+    prompt: 判断该函数是否把 volatile 指针/地址强制转换成非 volatile 指针后解引用或传递出去。若存在，violation=true，message 指出被去掉 volatile 的对象。
+    context:
+      candidate_regex: volatile
+      limit: 10
+  references:
+  - https://cmu-sei.github.io/secure-coding-standards/sei-cert-c-coding-standard/rules/expressions-exp/
+- id: EXP33-C
+  name: 不要读取未初始化的内存
+  severity: high
+  category: cert-c
+  type: semantic
+  language: c
+  description: 读取未初始化变量/缓冲区，值不确定，是大量信息泄漏与逻辑错误的根源。
+  rationale: CERT EXP33-C：读取未初始化对象属于未定义行为。
+  fix_suggestion: 声明时初始化；动态分配的缓冲区在使用前 memset 或用 calloc。
+  tags:
+  - EXP
+  - semantic
+  match:
+    prompt: 判断该函数是否可能读取了未初始化的局部变量、未初始化堆内存或未完全填充的缓冲区（例如声明后未赋值即参与运算/打印/比较）。若存在，violation=true，message 指出变量名。
+    context:
+      candidate_regex: \b(?:int|char|long|short|float|double|size_t|struct)\b
+      limit: 10
+  references:
+  - https://cmu-sei.github.io/secure-coding-standards/sei-cert-c-coding-standard/rules/expressions-exp/
+- id: EXP34-C
+  name: 不要解引用空指针
+  severity: critical
+  category: cert-c
+  type: semantic
+  language: c
+  description: 对可能为 NULL 的指针直接解引用（含 malloc 返回值未检查、函数返回可能为 NULL 未校验）会崩溃或被利用。
+  rationale: CERT EXP34-C：解引用空指针属于未定义行为。
+  fix_suggestion: 解引用前判空；malloc/calloc/realloc/strdup 与查找函数（strchr、fopen）返回值都要检查。
+  tags:
+  - EXP
+  - semantic
+  match:
+    prompt: 判断该函数是否在未做 NULL 检查的情况下解引用了可能为 NULL 的指针（含 malloc/fopen/strchr 等返回值、输出参数）。若存在，violation=true，line 填相对偏移，message 指出指针名。
+    context:
+      candidate_regex: ->|\*\s*\w+|\b(malloc|calloc|realloc|fopen|strchr|strstr|strdup)\s*\(
+      limit: 10
+  references:
+  - https://cmu-sei.github.io/secure-coding-standards/sei-cert-c-coding-standard/rules/expressions-exp/
+- id: EXP35-C
+  name: 不要修改临时生命周期对象
+  severity: medium
+  category: cert-c
+  type: semantic
+  language: c
+  description: 对结构体/数组字面量成员取地址并修改，对象在语句结束即失效，写入丢失或产生悬垂指针。
+  rationale: CERT EXP35-C：临时对象生命周期结束后其地址不可再用。
+  fix_suggestion: 先把字面量赋给具名变量再修改其成员。
+  tags:
+  - EXP
+  - semantic
+  match:
+    prompt: 判断该函数是否对复合字面量/临时对象的成员取地址或直接修改（如 (struct S){...}.x = 1 或 &((struct S){...})）。若存在，violation=true。
+    context:
+      candidate_regex: \(\s*(?:struct|union)\s+\w+\s*\)\s*\{
+      limit: 10
+  references:
+  - https://cmu-sei.github.io/secure-coding-standards/sei-cert-c-coding-standard/rules/expressions-exp/
+- id: EXP36-C
+  name: 不要把指针转换为对齐要求更严格的类型
+  severity: medium
+  category: cert-c
+  type: semantic
+  language: c
+  description: 把 char* 之类的弱对齐指针强转为 int*/double* 后解引用，若地址未按目标类型对齐，是未定义行为。
+  rationale: CERT EXP36-C：访问未对齐对象属于未定义行为。
+  fix_suggestion: 先 memcpy 到对齐的临时对象；或保证分配时按最大对齐要求对齐。
+  tags:
+  - EXP
+  - semantic
+  match:
+    prompt: 判断该函数是否把 char*/void*/字节缓冲区指针强制转换为对齐要求更高的类型（int*、double*、结构体指针）后解引用。若存在，violation=true，message 指出转换位置。
+    context:
+      candidate_regex: \(\s*(?:int|long|double|float|unsigned|struct)\s*\*+\s*\)
+      limit: 10
+  references:
+  - https://cmu-sei.github.io/secure-coding-standards/sei-cert-c-coding-standard/rules/expressions-exp/
+- id: EXP37-C
+  name: 按正确的数量和类型传参
+  severity: high
+  category: cert-c
+  type: semantic
+  language: c
+  description: 调用函数时参数个数或类型与原型不一致，可变参数与默认实参提升尤易出错。
+  rationale: CERT EXP37-C：实参与原型不匹配属于约束违规/未定义行为。
+  fix_suggestion: 包含正确原型头文件，按声明传参；printf 族注意格式串与类型匹配。
+  tags:
+  - EXP
+  - semantic
+  match:
+    prompt: 判断该函数是否存在函数调用与已知原型参数数量/类型不匹配（尤注意 printf/scanf 族格式串与实参类型、以及可变参数函数）。若存在，violation=true，message 指出调用点。
+    context:
+      candidate_regex: \w+\s*\(
+      limit: 10
+  references:
+  - https://cmu-sei.github.io/secure-coding-standards/sei-cert-c-coding-standard/rules/expressions-exp/
+- id: EXP39-C
+  name: 不要通过不兼容类型的指针访问变量
+  severity: high
+  category: cert-c
+  type: semantic
+  language: c
+  description: 通过不同类型的指针读写同一对象违反严格别名规则，优化后行为不可预期。
+  rationale: CERT EXP39-C：不兼容类型指针访问属于未定义行为。
+  fix_suggestion: 用 memcpy 做类型双关，或使用 char* 逐字节访问，或改正数据结构。
+  tags:
+  - EXP
+  - semantic
+  match:
+    prompt: 判断该函数是否通过与被访问对象类型不兼容的指针进行读写（严格别名违规，char*/void* 除外）。若存在，violation=true，message 指出对象与指针类型。
+    context:
+      candidate_regex: \*\s*\(\s*(?:int|short|long|float|double|unsigned|char)\s*\*+\s*\)
+      limit: 10
+  references:
+  - https://cmu-sei.github.io/secure-coding-standards/sei-cert-c-coding-standard/rules/expressions-exp/
+- id: EXP40-C
+  name: 不要修改常量对象
+  severity: high
+  category: cert-c
+  type: semantic
+  language: c
+  description: 通过强制去 const 的指针修改原本是 const 的对象，属于未定义行为（即使编译通过）。
+  rationale: CERT EXP40-C：修改 const 对象属于未定义行为。
+  fix_suggestion: 不要把 const 对象的地址赋给非 const 指针；需要可变副本就拷贝一份。
+  tags:
+  - EXP
+  - semantic
+  match:
+    prompt: 判断该函数是否把 const 对象/字符串字面量的地址赋给非 const 指针并通过它写入。若存在，violation=true。
+    context:
+      candidate_regex: \(\s*(?:char|int|void|unsigned|struct)\s*\*+\s*\)
+      limit: 10
+  references:
+  - https://cmu-sei.github.io/secure-coding-standards/sei-cert-c-coding-standard/rules/expressions-exp/
+- id: EXP42-C
+  name: 不要比较结构体的填充字节
+  severity: low
+  category: cert-c
+  type: regex
+  language: c
+  description: 对含 padding 的结构体用 memcmp 比较，填充字节内容不确定，可能把语义相同的对象判为不同。
+  rationale: CERT EXP42-C：padding 内容未规定。
+  fix_suggestion: 逐字段比较，或先用 memset 清零再填充字段。
+  tags:
+  - EXP
+  - heuristic
+  match:
+    pattern: \bmemcmp\s*\(
+    message: memcmp 比较结构体时可能比较到 padding 字节（{{line_number}} 行），请确认是逐字段比较
+    file_scope: *id001
+  references:
+  - https://cmu-sei.github.io/secure-coding-standards/sei-cert-c-coding-standard/rules/expressions-exp/
+- id: EXP43-C
+  name: restrict 限定指针时避免未定义行为
+  severity: medium
+  category: cert-c
+  type: semantic
+  language: c
+  description: restrict 承诺同一对象不被其他指针访问，若实际存在别名，编译器优化会产生错误结果。
+  rationale: CERT EXP43-C：违反 restrict 约定属于未定义行为。
+  fix_suggestion: 只在确实无别名时使用 restrict，或在函数内先做局部拷贝。
+  tags:
+  - EXP
+  - semantic
+  match:
+    prompt: 判断该函数参数使用 restrict 限定但函数体内存在可能访问同一对象的其他指针。若存在，violation=true。
+    context:
+      candidate_regex: restrict
+      limit: 10
+  references:
+  - https://cmu-sei.github.io/secure-coding-standards/sei-cert-c-coding-standard/rules/expressions-exp/
+- id: EXP44-C
+  name: 不要在 sizeof/_Alignof/_Generic 的操作数里产生副作用
+  severity: medium
+  category: cert-c
+  type: regex
+  language: c
+  description: sizeof 的操作数不求值，写 sizeof(i++) 不会自增，容易误以为已执行。
+  rationale: CERT EXP44-C：sizeof/_Alignof 的操作数不被求值。
+  fix_suggestion: 把副作用移出 sizeof；需要长度用 sizeof(类型) 或变量本身。
+  tags:
+  - EXP
+  - auto
+  match:
+    pattern: \b(?:sizeof|_Alignof|alignof)\s*\(\s*[^)]*(?:\+\+|--|=[^=])[^)]*\)
+    message: sizeof/_Alignof 的操作数含副作用，该副作用不会执行
+    file_scope: *id001
+  references:
+  - https://cmu-sei.github.io/secure-coding-standards/sei-cert-c-coding-standard/rules/expressions-exp/
+- id: EXP45-C
+  name: 不要在选择语句中做赋值
+  severity: high
+  category: cert-c
+  type: regex
+  language: c
+  description: if (a = b) 中的赋值常是笔误（应为 ==），且会把赋值结果当条件，逻辑与预期不符。
+  rationale: CERT EXP45-C：选择语句中的赋值多为误用。
+  fix_suggestion: 改为 ==；确实需要赋值时加双层括号 if ((a = b)) 并说明意图。
+  tags:
+  - EXP
+  - auto
+  match:
+    pattern: (?:if|while)\s*\(\s*(?!\()[^()]*(?<![=!<>+\-*/%&|^])=(?!=)[^()]*\)
+    message: 选择语句中出现赋值 {{match}}，疑似应为 ==
+    file_scope: *id001
+  references:
+  - https://cmu-sei.github.io/secure-coding-standards/sei-cert-c-coding-standard/rules/expressions-exp/
+- id: EXP46-C
+  name: 不要对布尔型操作数使用位运算符
+  severity: medium
+  category: cert-c
+  type: regex
+  language: c
+  description: if (a == 1 & b == 2) 用 & 连接比较结果，会先做按位与再当布尔用；多数场合本意是 &&。
+  rationale: CERT EXP46-C：位运算与布尔逻辑混用易产生错误结果。
+  fix_suggestion: 布尔条件用 && / ||；确实要做位掩码就不要与比较表达式混写。
+  tags:
+  - EXP
+  - heuristic
+  match:
+    pattern: \(\s*[^()]*(?:==|!=|<=|>=|<|>)[^()]*?(?<![&|])&(?![&=])[^()]*(?:==|!=|<=|>=|<|>)[^()]*\)
+    message: 布尔比较之间使用了位运算符 &，本意可能是 &&
+    file_scope: *id001
+  references:
+  - https://cmu-sei.github.io/secure-coding-standards/sei-cert-c-coding-standard/rules/expressions-exp/
+- id: EXP47-C
+  name: va_arg 的类型必须与实参一致
+  severity: medium
+  category: cert-c
+  type: semantic
+  language: c
+  description: va_arg 用错类型（如提升后的 float 当 double、short 当 int）会读到错误值。
+  rationale: CERT EXP47-C：va_arg 类型不匹配属于未定义行为。
+  fix_suggestion: 按默认实参提升后的类型取参：float 用 double、小整型用 int。
+  tags:
+  - EXP
+  - semantic
+  match:
+    prompt: 判断该函数中 va_arg 使用的类型是否与调用方可能传入的类型不一致（注意默认实参提升规则）。若存在，violation=true，message 说明应改用什么类型。
+    context:
+      candidate_regex: va_arg
+      limit: 10
+  references:
+  - https://cmu-sei.github.io/secure-coding-standards/sei-cert-c-coding-standard/rules/expressions-exp/

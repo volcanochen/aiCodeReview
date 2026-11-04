@@ -1,0 +1,114 @@
+# CERT C — STR 类别
+- id: STR30-C
+  name: 不要试图修改字符串字面量
+  severity: high
+  category: cert-c
+  type: regex
+  language: c
+  description: 字符串字面量通常位于只读段，写入会崩溃；用 strcpy/strcat/sprintf 以字面量为目标即属此类。
+  rationale: CERT STR30-C：修改字符串字面量属于未定义行为。
+  fix_suggestion: 用数组 char buf[] = "..." 或动态分配可写缓冲区。
+  tags:
+  - STR
+  - auto
+  match:
+    pattern: \b(?:strcpy|strcat|strncpy|strncat|sprintf|memcpy|memset)\s*\(\s*"
+    message: 以字符串字面量为写入目标
+    file_scope: &id001
+      language: c
+      path_glob: '*.c'
+  references:
+  - https://cmu-sei.github.io/secure-coding-standards/sei-cert-c-coding-standard/rules/characters-and-strings-str/
+- id: STR31-C
+  name: 保证字符串存储有足够空间容纳字符与结尾 0
+  severity: critical
+  category: cert-c
+  type: semantic
+  language: c
+  description: strcpy/strcat/sprintf 不检查目标容量，长度来自输入时必然溢出。
+  rationale: CERT STR31-C：字符串缓冲区必须容纳字符数据与空终止符。
+  fix_suggestion: 用 strncpy/snprintf 并显式补 0；或先计算所需长度再分配。
+  tags:
+  - STR
+  - semantic
+  match:
+    prompt: 判断该函数是否用无界字符串函数（strcpy/strcat/sprintf/gets）向固定大小缓冲区写入可能超长的数据。若存在，violation=true，message 指出缓冲区与调用。
+    context:
+      candidate_regex: \b(strcpy|strcat|sprintf|gets|scanf)\s*\(
+      limit: 10
+  references:
+  - https://cmu-sei.github.io/secure-coding-standards/sei-cert-c-coding-standard/rules/characters-and-strings-str/
+- id: STR32-C
+  name: 不要向期望字符串的库函数传入非空终止序列
+  severity: high
+  category: cert-c
+  type: semantic
+  language: c
+  description: 把未以 0 结尾的缓冲区传给 strlen/strcpy/printf %s 会越界读取。
+  rationale: CERT STR32-C：字符串函数要求参数以空字符终止。
+  fix_suggestion: 确保写入后显式补 0；用带长度的接口（memcpy、fwrite、%.*s）。
+  tags:
+  - STR
+  - semantic
+  match:
+    prompt: 判断该函数是否把可能未以 0 结尾的缓冲区传给字符串函数（strlen/strcpy/strcat/printf %s）。若存在，violation=true。
+    context:
+      candidate_regex: \b(strlen|strcpy|strcat|printf|strcmp)\s*\(
+      limit: 10
+  references:
+  - https://cmu-sei.github.io/secure-coding-standards/sei-cert-c-coding-standard/rules/characters-and-strings-str/
+- id: STR34-C
+  name: 把 char 转换为更大整数前先转 unsigned char
+  severity: medium
+  category: cert-c
+  type: semantic
+  language: c
+  description: char 在多数平台有符号，负值转 int 会符号扩展成巨大正数，导致长度/比较错误。
+  rationale: CERT STR34-C：字符到整数的转换须按 unsigned char 语义。
+  fix_suggestion: 先 (unsigned char)c 再转 int。
+  tags:
+  - STR
+  - semantic
+  match:
+    prompt: 判断该函数是否把 char 直接转成 int/size_t 或用于长度计算而没有先转 unsigned char。若存在，violation=true。
+    context:
+      candidate_regex: \(\s*(?:int|size_t|unsigned)\s*\)\s*\w+|\bstrlen\s*\(
+      limit: 10
+  references:
+  - https://cmu-sei.github.io/secure-coding-standards/sei-cert-c-coding-standard/rules/characters-and-strings-str/
+- id: STR37-C
+  name: 字符处理函数的实参必须能表示为 unsigned char
+  severity: high
+  category: cert-c
+  type: regex
+  language: c
+  description: 把可能为负的 char（或 EOF 以外的负值）传给 isalpha/toupper 等，是未定义行为。
+  rationale: CERT STR37-C：字符分类/转换函数只接受 EOF 或 unsigned char 范围内的值。
+  fix_suggestion: 传参前转换为 unsigned char：(unsigned char)c。
+  tags:
+  - STR
+  - heuristic
+  match:
+    pattern: \b(?:isalpha|isdigit|isspace|isalnum|ispunct|iscntrl|isprint|isupper|islower|isxdigit|isgraph|toupper|tolower)\s*\(\s*[A-Za-z_]\w*\s*\)
+    message: 字符处理函数实参 {{match}} 可能是负值 char，应先转 unsigned char
+    file_scope: *id001
+  references:
+  - https://cmu-sei.github.io/secure-coding-standards/sei-cert-c-coding-standard/rules/characters-and-strings-str/
+- id: STR38-C
+  name: 不要混淆窄字符与宽字符字符串/函数
+  severity: high
+  category: cert-c
+  type: regex
+  language: c
+  description: 把 char* 传给 wcslen，或把 L"..." 传给 strlen，类型不匹配且长度语义不同。
+  rationale: CERT STR38-C：窄/宽字符串函数不可混用。
+  fix_suggestion: 宽字符用 wcs* 函数与 L 前缀；转换用 mbstowcs/wcstombs。
+  tags:
+  - STR
+  - auto
+  match:
+    pattern: \b(?:wcslen|wcscpy|wcscat|wcscmp)\s*\(\s*"|\b(?:strlen|strcpy|strcmp)\s*\(\s*L"
+    message: 窄/宽字符串函数与字面量类型不匹配
+    file_scope: *id001
+  references:
+  - https://cmu-sei.github.io/secure-coding-standards/sei-cert-c-coding-standard/rules/characters-and-strings-str/

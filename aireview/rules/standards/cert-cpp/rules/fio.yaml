@@ -1,0 +1,39 @@
+# CERT C++ — FIO 类别
+- id: FIO50-CPP
+  name: 同一文件流读写切换前必须定位
+  severity: medium
+  category: cert-cpp
+  type: semantic
+  language: cpp
+  description: 交替读写而不 seek/seekg，缓冲区状态未定义。
+  rationale: CERT C++ FIO50-CPP：见规范原文。
+  fix_suggestion: 写后读前调用 seekg 或 flush。
+  tags:
+  - FIO
+  - semantic
+  match:
+    prompt: 判断该函数是否在同一 fstream 上交替读写且中间没有定位。若存在，violation=true。
+    context:
+      candidate_regex: \.(read|write|seekg|seekp)\(
+      limit: 8
+  references:
+  - https://cmu-sei.github.io/secure-coding-standards/sei-cert-cpp-coding-standard/rules/input-output-fio/
+- id: FIO51-CPP
+  name: 文件不再使用时必须关闭
+  severity: medium
+  category: cert-cpp
+  type: semantic
+  language: cpp
+  description: fstream 未关闭会占用描述符，且可能丢缓冲数据。
+  rationale: CERT C++ FIO51-CPP：见规范原文。
+  fix_suggestion: 显式 close() 或让对象在最短作用域内析构。
+  tags:
+  - FIO
+  - semantic
+  match:
+    prompt: 判断该函数打开的文件流是否在所有路径上都被关闭。若存在，violation=true。
+    context:
+      candidate_regex: \.open\(|ofstream|ifstream
+      limit: 8
+  references:
+  - https://cmu-sei.github.io/secure-coding-standards/sei-cert-cpp-coding-standard/rules/input-output-fio/

@@ -1,0 +1,20 @@
+# CERT C — WIN 类别
+- id: WIN30-C
+  name: 正确配对分配与释放函数
+  severity: high
+  category: cert-c
+  type: semantic
+  language: c
+  description: LocalAlloc/GlobalAlloc/HeapAlloc 分配的内存必须用对应函数释放；与 free 混用会破坏堆。
+  rationale: CERT WIN30-C：Windows 堆分配需成对使用同一族 API。
+  fix_suggestion: LocalAlloc→LocalFree、HeapAlloc→HeapFree，不要与 malloc/free 混用。
+  tags:
+  - WIN
+  - semantic
+  match:
+    prompt: 判断该函数是否把 Windows 堆分配 API 与 free/delete 混用，或释放了不同族 API 分配的内存。若存在，violation=true。
+    context:
+      candidate_regex: \b(LocalAlloc|GlobalAlloc|HeapAlloc|LocalFree|GlobalFree|HeapFree|free)\s*\(
+      limit: 10
+  references:
+  - https://cmu-sei.github.io/secure-coding-standards/sei-cert-c-coding-standard/rules/microsoft-windows-win/

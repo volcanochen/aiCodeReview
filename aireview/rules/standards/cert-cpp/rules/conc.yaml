@@ -1,0 +1,134 @@
+# CERT C++ — CON 类别
+- id: CON50-CPP
+  name: 不要销毁处于锁定状态的互斥量
+  severity: high
+  category: cert-cpp
+  type: semantic
+  language: cpp
+  description: 销毁仍被锁定的 mutex 会留下永久不可用的锁。
+  rationale: CERT C++ CON50-CPP：见规范原文。
+  fix_suggestion: 先 unlock 再 destroy；用 RAII 保证配对。
+  tags:
+  - CON
+  - semantic
+  match:
+    prompt: 判断该函数是否在未释放锁的情况下销毁了 mutex。若存在，violation=true。
+    context:
+      candidate_regex: \.lock\(\)|\.unlock\(\)|mutex
+      limit: 8
+  references:
+  - https://cmu-sei.github.io/secure-coding-standards/sei-cert-cpp-coding-standard/rules/concurrency-con/
+- id: CON51-CPP
+  name: 异常路径上必须释放持有的锁
+  severity: high
+  category: cert-cpp
+  type: semantic
+  language: cpp
+  description: 手工 lock 后在异常抛出路径上未 unlock，导致死锁。
+  rationale: CERT C++ CON51-CPP：见规范原文。
+  fix_suggestion: 改用 std::lock_guard/unique_lock 等 RAII 封装。
+  tags:
+  - CON
+  - semantic
+  match:
+    prompt: 判断该函数手工调用 lock 后是否存在未 unlock 的异常退出路径。若存在，violation=true。
+    context:
+      candidate_regex: \.lock\(\)
+      limit: 8
+  references:
+  - https://cmu-sei.github.io/secure-coding-standards/sei-cert-cpp-coding-standard/rules/concurrency-con/
+- id: CON52-CPP
+  name: 防止多线程访问位域的数据竞争
+  severity: medium
+  category: cert-cpp
+  type: semantic
+  language: cpp
+  description: 不同位域共享存储单元，并发写会互相覆盖。
+  rationale: CERT C++ CON52-CPP：见规范原文。
+  fix_suggestion: 拆成独立成员或用互斥量保护。
+  tags:
+  - CON
+  - semantic
+  match:
+    prompt: 判断该函数是否在无同步的情况下并发写同一对象的位域。若存在，violation=true。
+    context:
+      candidate_regex: :\s*\d+\s*;
+      limit: 8
+  references:
+  - https://cmu-sei.github.io/secure-coding-standards/sei-cert-cpp-coding-standard/rules/concurrency-con/
+- id: CON53-CPP
+  name: 按固定顺序加锁避免死锁
+  severity: high
+  category: cert-cpp
+  type: semantic
+  language: cpp
+  description: 不同位置以相反顺序获取多把锁构成死锁。
+  rationale: CERT C++ CON53-CPP：见规范原文。
+  fix_suggestion: 用 std::scoped_lock 一次性获取，或定义全局加锁顺序。
+  tags:
+  - CON
+  - semantic
+  match:
+    prompt: 判断该函数是否以与其他位置相反的顺序获取多把锁。若存在，violation=true。
+    context:
+      candidate_regex: lock\(\)
+      limit: 8
+  references:
+  - https://cmu-sei.github.io/secure-coding-standards/sei-cert-cpp-coding-standard/rules/concurrency-con/
+- id: CON54-CPP
+  name: 可能虚假唤醒的等待必须放在循环中
+  severity: medium
+  category: cert-cpp
+  type: semantic
+  language: cpp
+  description: condition_variable::wait 可能无通知返回。
+  rationale: CERT C++ CON54-CPP：见规范原文。
+  fix_suggestion: 用 wait(lock, pred) 或 while 循环重检条件。
+  tags:
+  - CON
+  - semantic
+  match:
+    prompt: 判断该函数是否用 if 包裹 wait 而非循环重检条件。若存在，violation=true。
+    context:
+      candidate_regex: \.wait\(
+      limit: 8
+  references:
+  - https://cmu-sei.github.io/secure-coding-standards/sei-cert-cpp-coding-standard/rules/concurrency-con/
+- id: CON55-CPP
+  name: 使用条件变量时保证线程安全与活性
+  severity: medium
+  category: cert-cpp
+  type: semantic
+  language: cpp
+  description: 丢信号或漏广播会导致永久等待。
+  rationale: CERT C++ CON55-CPP：见规范原文。
+  fix_suggestion: 改条件与 notify 时持有同一把锁；必要时 notify_all。
+  tags:
+  - CON
+  - semantic
+  match:
+    prompt: 判断该函数是否存在丢失唤醒或永久等待的条件变量误用。若存在，violation=true。
+    context:
+      candidate_regex: notify_(one|all)
+      limit: 8
+  references:
+  - https://cmu-sei.github.io/secure-coding-standards/sei-cert-cpp-coding-standard/rules/concurrency-con/
+- id: CON56-CPP
+  name: 不要投机锁定已持有的非递归互斥量
+  severity: medium
+  category: cert-cpp
+  type: semantic
+  language: cpp
+  description: 对已持有的非递归 mutex 再次 lock/try_lock 是未定义行为。
+  rationale: CERT C++ CON56-CPP：见规范原文。
+  fix_suggestion: 改用 recursive_mutex 或调整加锁结构。
+  tags:
+  - CON
+  - semantic
+  match:
+    prompt: 判断该函数是否对可能已被本线程持有的非递归互斥量再次加锁。若存在，violation=true。
+    context:
+      candidate_regex: try_lock
+      limit: 8
+  references:
+  - https://cmu-sei.github.io/secure-coding-standards/sei-cert-cpp-coding-standard/rules/concurrency-con/

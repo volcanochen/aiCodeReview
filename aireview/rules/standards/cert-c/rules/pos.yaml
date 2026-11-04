@@ -1,0 +1,304 @@
+# CERT C — POS 类别
+- id: POS30-C
+  name: 正确使用 readlink
+  severity: medium
+  category: cert-c
+  type: semantic
+  language: c
+  description: readlink 不保证以 NUL 结尾，直接把结果当字符串会越界；且它不解析失败原因。
+  rationale: CERT POS30-C：readlink 返回值需手动截断。
+  fix_suggestion: 按返回值截断并补 0；需要解析用 realpath。
+  tags:
+  - POS
+  - semantic
+  match:
+    prompt: 判断该函数是否把 readlink 的结果直接当 C 字符串使用而未按返回值补 0。若存在，violation=true。
+    context:
+      candidate_regex: \breadlink\s*\(
+      limit: 10
+  references:
+  - https://cmu-sei.github.io/secure-coding-standards/sei-cert-c-coding-standard/rules/posix-pos/
+- id: POS34-C
+  name: 不要用自动变量的指针调用 putenv
+  severity: high
+  category: cert-c
+  type: regex
+  language: c
+  description: putenv 保存的是指针本身，局部数组离开作用域后环境变量指向失效内存。
+  rationale: CERT POS34-C：putenv 的参数必须长期有效。
+  fix_suggestion: 用 setenv（会复制字符串），或传静态/堆上的字符串。
+  tags:
+  - POS
+  - heuristic
+  match:
+    pattern: \bputenv\s*\(\s*[A-Za-z_]\w*\s*\)
+    message: putenv 的参数是变量，可能指向自动存储期缓冲区
+    file_scope: &id001
+      language: c
+      path_glob: '*.c'
+  references:
+  - https://cmu-sei.github.io/secure-coding-standards/sei-cert-c-coding-standard/rules/posix-pos/
+- id: POS35-C
+  name: 检查符号链接存在性时避免竞态
+  severity: high
+  category: cert-c
+  type: semantic
+  language: c
+  description: lstat 检查后按路径操作，中间可能被替换成符号链接（symlink attack）。
+  rationale: CERT POS35-C：检查与使用必须原子。
+  fix_suggestion: 用 open(O_NOFOLLOW) / openat + AT_SYMLINK_NOFOLLOW，避免先查后用。
+  tags:
+  - POS
+  - semantic
+  match:
+    prompt: 判断该函数是否先 lstat/access 检查符号链接再 open/操作同一路径。若存在，violation=true。
+    context:
+      candidate_regex: \b(lstat|access|open|symlink)\s*\(
+      limit: 10
+  references:
+  - https://cmu-sei.github.io/secure-coding-standards/sei-cert-c-coding-standard/rules/posix-pos/
+- id: POS36-C
+  name: 放弃特权时遵守正确的撤销顺序
+  severity: high
+  category: cert-c
+  type: semantic
+  language: c
+  description: 先 setegid 再 seteuid 的顺序错误会让进程在撤销 euid 后仍保留特权访问能力。
+  rationale: CERT POS36-C：应先撤销 group 特权再撤销 user 特权。
+  fix_suggestion: 按 setgroups → setegid → seteuid 的顺序，并检查每步结果。
+  tags:
+  - POS
+  - semantic
+  match:
+    prompt: 判断该函数是否以错误顺序撤销特权（先 seteuid 后 setegid）。若存在，violation=true。
+    context:
+      candidate_regex: \b(seteuid|setegid|setuid|setgid|setgroups)\s*\(
+      limit: 10
+  references:
+  - https://cmu-sei.github.io/secure-coding-standards/sei-cert-c-coding-standard/rules/posix-pos/
+- id: POS37-C
+  name: 确认特权撤销成功
+  severity: high
+  category: cert-c
+  type: semantic
+  language: c
+  description: setuid/seteuid 失败但未检查，程序会以为已降权而继续以高权限运行。
+  rationale: CERT POS37-C：降权调用的返回值必须检查。
+  fix_suggestion: 检查每次降权返回值，失败则终止；降权后再验证 geteuid。
+  tags:
+  - POS
+  - semantic
+  match:
+    prompt: 判断该函数是否调用 setuid/seteuid/setgid/setegid 后未检查返回值。若存在，violation=true。
+    context:
+      candidate_regex: \b(setuid|seteuid|setgid|setegid)\s*\(
+      limit: 10
+  references:
+  - https://cmu-sei.github.io/secure-coding-standards/sei-cert-c-coding-standard/rules/posix-pos/
+- id: POS38-C
+  name: 注意 fork 与文件描述符的竞态
+  severity: medium
+  category: cert-c
+  type: semantic
+  language: c
+  description: fork 后父子进程共享文件偏移，且子进程继承敏感 fd（如已打开的特权文件）。
+  rationale: CERT POS38-C：fork 前后需明确 fd 的所有权与偏移状态。
+  fix_suggestion: fork 前关闭不需要的 fd（或用 O_CLOEXEC），必要时 lseek 重置偏移。
+  tags:
+  - POS
+  - semantic
+  match:
+    prompt: 判断该函数是否在 fork 之后父子进程都继续使用同一 fd 而未处理共享偏移或关闭。若存在，violation=true。
+    context:
+      candidate_regex: \bfork\s*\(
+      limit: 10
+  references:
+  - https://cmu-sei.github.io/secure-coding-standards/sei-cert-c-coding-standard/rules/posix-pos/
+- id: POS39-C
+  name: 跨系统传输数据时使用正确的字节序
+  severity: medium
+  category: cert-c
+  type: semantic
+  language: c
+  description: 直接传输主机字节序的整数/结构体，在异构系统间会解析错误。
+  rationale: CERT POS39-C：网络/跨平台数据必须显式转换字节序。
+  fix_suggestion: 用 htonl/ntohl 等显式转换，或使用序列化格式。
+  tags:
+  - POS
+  - semantic
+  match:
+    prompt: 判断该函数是否把主机字节序的多字节整数直接写入网络/文件而未转换。若存在，violation=true。
+    context:
+      candidate_regex: \b(write|send|sendto|fwrite|memcpy)\s*\(
+      limit: 10
+  references:
+  - https://cmu-sei.github.io/secure-coding-standards/sei-cert-c-coding-standard/rules/posix-pos/
+- id: POS44-C
+  name: 不要用信号终止线程
+  severity: medium
+  category: cert-c
+  type: regex
+  language: c
+  description: 用 pthread_kill 传递终止信号来结束线程，信号处理函数与线程栈状态不一致，容易崩溃。
+  rationale: CERT POS44-C：线程应通过取消或标志位协作退出。
+  fix_suggestion: 用取消点 + pthread_cancel，或设置退出标志让线程自行结束。
+  tags:
+  - POS
+  - heuristic
+  match:
+    pattern: \bpthread_kill\s*\(
+    message: 用 pthread_kill 向线程发送信号来终止它
+    file_scope: *id001
+  references:
+  - https://cmu-sei.github.io/secure-coding-standards/sei-cert-c-coding-standard/rules/posix-pos/
+- id: POS47-C
+  name: 不要使用可异步取消的线程
+  severity: medium
+  category: cert-c
+  type: regex
+  language: c
+  description: PTHREAD_CANCEL_ASYNCHRONOUS 可在任意指令处取消，可能在持有锁/分配内存时中断。
+  rationale: CERT POS47-C：异步取消不安全。
+  fix_suggestion: 使用延迟取消（默认）并在安全点检查取消。
+  tags:
+  - POS
+  - heuristic
+  match:
+    pattern: \bPTHREAD_CANCEL_ASYNCHRONOUS\b
+    message: 设置了异步取消类型，取消可能发生在任意指令处
+    file_scope: *id001
+  references:
+  - https://cmu-sei.github.io/secure-coding-standards/sei-cert-c-coding-standard/rules/posix-pos/
+- id: POS48-C
+  name: 不要解锁或销毁其他线程的互斥量
+  severity: high
+  category: cert-c
+  type: semantic
+  language: c
+  description: 由非持有线程 unlock/destroy，破坏互斥量的所有权语义，行为未定义。
+  rationale: CERT POS48-C：mutex 只能由持有者解锁。
+  fix_suggestion: 把 lock/unlock 收敛到同一函数或封装成 RAII。
+  tags:
+  - POS
+  - semantic
+  match:
+    prompt: 判断该函数是否解锁了它没有加锁的互斥量，或销毁了可能被他人持有的互斥量。若存在，violation=true。
+    context:
+      candidate_regex: \bpthread_mutex_(unlock|destroy)\b
+      limit: 10
+  references:
+  - https://cmu-sei.github.io/secure-coding-standards/sei-cert-c-coding-standard/rules/posix-pos/
+- id: POS49-C
+  name: 多线程访问数据时必须用互斥量保护且避免相邻数据竞争
+  severity: high
+  category: cert-c
+  type: semantic
+  language: c
+  description: 只保护部分字段，相邻字段仍被无锁访问，缓存行级的并发写仍构成竞争。
+  rationale: CERT POS49-C：同一缓存行上的数据需一并保护。
+  fix_suggestion: 把相关字段收敛到同一结构并由同一把锁保护。
+  tags:
+  - POS
+  - semantic
+  match:
+    prompt: 判断该函数是否在锁内只访问了部分相关字段，而其他线程在锁外访问相邻字段。若存在，violation=true。
+    context:
+      candidate_regex: \bpthread_mutex_lock\b
+      limit: 10
+  references:
+  - https://cmu-sei.github.io/secure-coding-standards/sei-cert-c-coding-standard/rules/posix-pos/
+- id: POS50-C
+  name: POSIX 线程共享对象必须有合适的存储期
+  severity: high
+  category: cert-c
+  type: semantic
+  language: c
+  description: 把线程栈上对象的地址交给其他线程，线程退出后地址失效。
+  rationale: CERT POS50-C：跨线程对象的存储期必须覆盖使用期。
+  fix_suggestion: 共享数据用堆分配或由调用方持有。
+  tags:
+  - POS
+  - semantic
+  match:
+    prompt: 判断该函数是否把自动存储期对象的地址传给其他线程。若存在，violation=true。
+    context:
+      candidate_regex: \bpthread_create\s*\(
+      limit: 10
+  references:
+  - https://cmu-sei.github.io/secure-coding-standards/sei-cert-c-coding-standard/rules/posix-pos/
+- id: POS51-C
+  name: 按预定义顺序加锁以避免死锁
+  severity: high
+  category: cert-c
+  type: semantic
+  language: c
+  description: 不同线程以不同顺序获取同一组锁，构成死锁。
+  rationale: CERT POS51-C：POSIX 线程多锁必须固定顺序。
+  fix_suggestion: 为锁编号，全局按序加锁。
+  tags:
+  - POS
+  - semantic
+  match:
+    prompt: 判断该函数是否以与其他位置相反的相对顺序获取两把锁。若存在，violation=true。
+    context:
+      candidate_regex: \bpthread_mutex_lock\b
+      limit: 10
+  references:
+  - https://cmu-sei.github.io/secure-coding-standards/sei-cert-c-coding-standard/rules/posix-pos/
+- id: POS52-C
+  name: 持有 POSIX 锁时不要执行可能阻塞的操作
+  severity: medium
+  category: cert-c
+  type: semantic
+  language: c
+  description: 持锁时做 IO、等待条件、sleep，会拉长临界区并显著提高死锁风险。
+  rationale: CERT POS52-C：临界区内不得阻塞。
+  fix_suggestion: 把阻塞操作移出临界区，先拷贝数据再解锁处理。
+  tags:
+  - POS
+  - semantic
+  match:
+    prompt: 判断该函数是否在持有互斥量时执行了 read/write/sleep/pthread_cond_wait 等阻塞操作。若存在，violation=true。
+    context:
+      candidate_regex: \bpthread_mutex_lock\b
+      limit: 10
+  references:
+  - https://cmu-sei.github.io/secure-coding-standards/sei-cert-c-coding-standard/rules/posix-pos/
+- id: POS53-C
+  name: 同一条件变量不要使用多个互斥量
+  severity: medium
+  category: cert-c
+  type: semantic
+  language: c
+  description: 一个 cond 关联多个 mutex 会使唤醒与条件检查不在同一把锁下，导致丢信号或竞争。
+  rationale: CERT POS53-C：一个条件变量只对应一个互斥量。
+  fix_suggestion: 让每个条件变量绑定唯一 mutex。
+  tags:
+  - POS
+  - semantic
+  match:
+    prompt: 判断该函数是否对同一 pthread_cond_t 使用了不同的互斥量。若存在，violation=true。
+    context:
+      candidate_regex: \bpthread_cond_\w+\b
+      limit: 10
+  references:
+  - https://cmu-sei.github.io/secure-coding-standards/sei-cert-c-coding-standard/rules/posix-pos/
+- id: POS54-C
+  name: 检测并处理 POSIX 库错误
+  severity: high
+  category: cert-c
+  type: semantic
+  language: c
+  description: pthread_* 返回错误码而非设置 errno，未检查返回值会静默丢失失败。
+  rationale: CERT POS54-C：POSIX 函数返回值必须检查。
+  fix_suggestion: 检查 pthread_* 返回值并处理；不要用 errno 判断。
+  tags:
+  - POS
+  - semantic
+  match:
+    prompt: 判断该函数是否调用了返回值有错误码的 POSIX 函数（pthread_create/mutex_lock/cond_wait 等）却未检查返回码。若存在，violation=true。
+    context:
+      candidate_regex: \bpthread_\w+\s*\(
+      limit: 10
+  references:
+  - https://cmu-sei.github.io/secure-coding-standards/sei-cert-c-coding-standard/rules/posix-pos/

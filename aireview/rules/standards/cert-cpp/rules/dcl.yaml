@@ -1,0 +1,210 @@
+# CERT C++ — DCL 类别
+- id: DCL50-CPP
+  name: 不要定义 C 风格可变参数函数
+  severity: medium
+  category: cert-cpp
+  type: semantic
+  language: cpp
+  description: va_list 无法类型检查，参数不匹配即未定义行为。
+  rationale: CERT C++ DCL50-CPP：见规范原文。
+  fix_suggestion: 改用可变参数模板或初始化列表。
+  tags:
+  - DCL
+  - semantic
+  match:
+    prompt: 判断该函数是否用 ... 定义 C 风格可变参数函数。若存在，violation=true。
+    context:
+      candidate_regex: \.\.\.
+      limit: 8
+  references:
+  - https://cmu-sei.github.io/secure-coding-standards/sei-cert-cpp-coding-standard/rules/declarations-dcl/
+- id: DCL51-CPP
+  name: 不要声明或定义保留标识符
+  severity: medium
+  category: cert-cpp
+  type: regex
+  language: cpp
+  description: 以双下划线或 _加大写字母开头的标识符由实现保留。
+  rationale: CERT C++ DCL51-CPP：见规范原文。
+  fix_suggestion: 改用不带前导下划线的命名。
+  tags:
+  - DCL
+  - heuristic
+  match:
+    pattern: ^\s*#\s*define\s+(__[A-Za-z0-9_]*|_[A-Z][A-Za-z0-9_]*)|^\s*(?:class|struct|enum|union)\s+(_[A-Z]\w*|__\w+)
+    message: 定义了保留标识符
+    file_scope: &id001
+      language: cpp
+      path_glob: '*.cpp'
+  references:
+  - https://cmu-sei.github.io/secure-coding-standards/sei-cert-cpp-coding-standard/rules/declarations-dcl/
+- id: DCL52-CPP
+  name: 不要给引用类型加 const/volatile 限定
+  severity: low
+  category: cert-cpp
+  type: regex
+  language: cpp
+  description: int& const 这类写法非法或与直觉不符，const 应加在被引用类型上。
+  rationale: CERT C++ DCL52-CPP：见规范原文。
+  fix_suggestion: 写成 const int&。
+  tags:
+  - DCL
+  - heuristic
+  match:
+    pattern: \b[A-Za-z_]\w*\s*&\s*const\b
+    message: 对引用本身加了 const 限定，应改为 const T&
+    file_scope: *id001
+  references:
+  - https://cmu-sei.github.io/secure-coding-standards/sei-cert-cpp-coding-standard/rules/declarations-dcl/
+- id: DCL53-CPP
+  name: 不要写语法上有歧义的声明
+  severity: medium
+  category: cert-cpp
+  type: semantic
+  language: cpp
+  description: 最令人烦恼的解析（Most Vexing Parse）让变量声明被解析成函数声明。
+  rationale: CERT C++ DCL53-CPP：见规范原文。
+  fix_suggestion: 用 {} 初始化或加括号消除歧义。
+  tags:
+  - DCL
+  - semantic
+  match:
+    prompt: 判断该函数是否存在 Most Vexing Parse 形态的声明（T x(Y());）。若存在，violation=true。
+    context:
+      candidate_regex: \w+\s+\w+\s*\(\s*\w+\s*\(
+      limit: 8
+  references:
+  - https://cmu-sei.github.io/secure-coding-standards/sei-cert-cpp-coding-standard/rules/declarations-dcl/
+- id: DCL54-CPP
+  name: 在同一作用域成对重载分配与释放函数
+  severity: medium
+  category: cert-cpp
+  type: semantic
+  language: cpp
+  description: 只重载 operator new 不重载 operator delete，会跨分配器释放。
+  rationale: CERT C++ DCL54-CPP：见规范原文。
+  fix_suggestion: 成对重载 new/delete 及数组版本。
+  tags:
+  - DCL
+  - semantic
+  match:
+    prompt: 判断该类是否只重载了 operator new 而未重载对应 operator delete。若存在，violation=true。
+    context:
+      candidate_regex: operator\s+(new|delete)
+      limit: 8
+  references:
+  - https://cmu-sei.github.io/secure-coding-standards/sei-cert-cpp-coding-standard/rules/declarations-dcl/
+- id: DCL55-CPP
+  name: 类对象跨信任边界传递时避免信息泄漏
+  severity: medium
+  category: cert-cpp
+  type: semantic
+  language: cpp
+  description: 类对象 padding 与未初始化成员会随整体写出而泄漏。
+  rationale: CERT C++ DCL55-CPP：见规范原文。
+  fix_suggestion: 逐字段序列化或先清零。
+  tags:
+  - DCL
+  - semantic
+  match:
+    prompt: 判断该函数是否把整个类对象按字节写出到外部。若存在，violation=true。
+    context:
+      candidate_regex: write|fwrite|memcpy|send
+      limit: 8
+  references:
+  - https://cmu-sei.github.io/secure-coding-standards/sei-cert-cpp-coding-standard/rules/declarations-dcl/
+- id: DCL56-CPP
+  name: 避免静态对象初始化形成循环
+  severity: high
+  category: cert-cpp
+  type: semantic
+  language: cpp
+  description: 跨翻译单元的静态初始化顺序未定义，循环依赖会读到未构造对象。
+  rationale: CERT C++ DCL56-CPP：见规范原文。
+  fix_suggestion: 改用函数内静态（Meyers singleton）或显式初始化函数。
+  tags:
+  - DCL
+  - semantic
+  match:
+    prompt: 判断该文件是否存在跨 TU 的静态对象相互依赖初始化。若存在，violation=true。
+    context:
+      candidate_regex: static\s+\w+
+      limit: 8
+  references:
+  - https://cmu-sei.github.io/secure-coding-standards/sei-cert-cpp-coding-standard/rules/declarations-dcl/
+- id: DCL57-CPP
+  name: 不要让异常逃出析构函数或释放函数
+  severity: high
+  category: cert-cpp
+  type: semantic
+  language: cpp
+  description: 析构期间抛异常会导致 std::terminate。
+  rationale: CERT C++ DCL57-CPP：见规范原文。
+  fix_suggestion: 析构函数标记 noexcept 并捕获内部异常。
+  tags:
+  - DCL
+  - semantic
+  match:
+    prompt: 判断该析构函数或 operator delete 是否可能抛出异常。若存在，violation=true。
+    context:
+      candidate_regex: ~?\w+\s*\(\s*\)\s*(?:noexcept)?\s*\{|operator\s+delete
+      limit: 8
+  references:
+  - https://cmu-sei.github.io/secure-coding-standards/sei-cert-cpp-coding-standard/rules/declarations-dcl/
+- id: DCL58-CPP
+  name: 不要修改标准命名空间
+  severity: high
+  category: cert-cpp
+  type: regex
+  language: cpp
+  description: 向 namespace std 添加声明是未定义行为。
+  rationale: CERT C++ DCL58-CPP：见规范原文。
+  fix_suggestion: 在自己的命名空间里实现，或改用特化允许的点。
+  tags:
+  - DCL
+  - heuristic
+  match:
+    pattern: \bnamespace\s+std\s*\{
+    message: 向 std 命名空间添加了声明
+    file_scope: *id001
+  references:
+  - https://cmu-sei.github.io/secure-coding-standards/sei-cert-cpp-coding-standard/rules/declarations-dcl/
+- id: DCL59-CPP
+  name: 不要在头文件中定义匿名命名空间
+  severity: medium
+  category: cert-cpp
+  type: regex
+  language: cpp
+  description: 头文件里的匿名命名空间会让每个包含者各有一份内部链接对象，违反 ODR。
+  rationale: CERT C++ DCL59-CPP：见规范原文。
+  fix_suggestion: 改为具名命名空间或放到 .cpp。
+  tags:
+  - DCL
+  - heuristic
+  match:
+    pattern: \bnamespace\s*\{
+    message: 头文件中出现匿名命名空间
+    file_scope:
+      language: cpp
+      path_glob: '*.h'
+  references:
+  - https://cmu-sei.github.io/secure-coding-standards/sei-cert-cpp-coding-standard/rules/declarations-dcl/
+- id: DCL60-CPP
+  name: 遵守单一定义规则（ODR）
+  severity: high
+  category: cert-cpp
+  type: semantic
+  language: cpp
+  description: 同一实体在多个 TU 定义不一致会导致链接期或运行期诡异问题。
+  rationale: CERT C++ DCL60-CPP：见规范原文。
+  fix_suggestion: 定义放 .cpp，声明放头文件并加 include guard。
+  tags:
+  - DCL
+  - semantic
+  match:
+    prompt: 判断该文件是否在头文件里定义了非 inline 的函数或全局变量。若存在，violation=true。
+    context:
+      candidate_regex: ^\w+.*\(.*\)\s*\{
+      limit: 8
+  references:
+  - https://cmu-sei.github.io/secure-coding-standards/sei-cert-cpp-coding-standard/rules/declarations-dcl/

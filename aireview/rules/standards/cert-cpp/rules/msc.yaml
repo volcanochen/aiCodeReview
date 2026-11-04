@@ -1,0 +1,97 @@
+# CERT C++ — MSC 类别
+- id: MSC50-CPP
+  name: 不要用 std::rand() 生成伪随机数
+  severity: high
+  category: cert-cpp
+  type: regex
+  language: cpp
+  description: std::rand 质量与周期因实现而异，共享全局状态，不适合安全用途。
+  rationale: CERT C++ MSC50-CPP：见规范原文。
+  fix_suggestion: 安全场景用 std::random_device + 高质量引擎或系统 CSPRNG。
+  tags:
+  - MSC
+  - heuristic
+  match:
+    pattern: \b(?:std::)?rand\s*\(
+    message: 使用了 rand()，不适合安全相关随机数
+    file_scope:
+      language: cpp
+      path_glob: '*.cpp'
+  references:
+  - https://cmu-sei.github.io/secure-coding-standards/sei-cert-cpp-coding-standard/rules/miscellaneous-msc/
+- id: MSC51-CPP
+  name: 正确为随机数生成器播种
+  severity: medium
+  category: cert-cpp
+  type: semantic
+  language: cpp
+  description: 未播种或用固定常量播种，序列可预测。
+  rationale: CERT C++ MSC51-CPP：见规范原文。
+  fix_suggestion: 用 random_device 播种一次，不要重复播种。
+  tags:
+  - MSC
+  - semantic
+  match:
+    prompt: 判断该函数是否使用随机引擎但进程内从未播种或用固定种子。若存在，violation=true。
+    context:
+      candidate_regex: random_device|default_random_engine|srand
+      limit: 8
+  references:
+  - https://cmu-sei.github.io/secure-coding-standards/sei-cert-cpp-coding-standard/rules/miscellaneous-msc/
+- id: MSC52-CPP
+  name: 有返回值的函数必须在所有路径返回值
+  severity: high
+  category: cert-cpp
+  type: semantic
+  language: cpp
+  description: 存在不返回值就走到末尾的路径，是未定义行为。
+  rationale: CERT C++ MSC52-CPP：见规范原文。
+  fix_suggestion: 补齐所有分支的 return，或抛出异常。
+  tags:
+  - MSC
+  - semantic
+  match:
+    prompt: 判断该非 void 函数是否存在不返回值就走到末尾的路径。若存在，violation=true。
+    context:
+      candidate_regex: ^\w[\w:<>,&\s\*]*\s+\w+\s*\(
+      limit: 8
+  references:
+  - https://cmu-sei.github.io/secure-coding-standards/sei-cert-cpp-coding-standard/rules/miscellaneous-msc/
+- id: MSC53-CPP
+  name: 不要在 [[noreturn]] 函数中返回
+  severity: high
+  category: cert-cpp
+  type: semantic
+  language: cpp
+  description: 标了 [[noreturn]] 却返回，调用点之后的代码被优化掉，行为不可预期。
+  rationale: CERT C++ MSC53-CPP：见规范原文。
+  fix_suggestion: 确保该函数不返回（终止或抛异常）。
+  tags:
+  - MSC
+  - semantic
+  match:
+    prompt: 判断该 [[noreturn]] 函数是否存在 return 或走到末尾返回的路径。若存在，violation=true。
+    context:
+      candidate_regex: noreturn
+      limit: 8
+  references:
+  - https://cmu-sei.github.io/secure-coding-standards/sei-cert-cpp-coding-standard/rules/miscellaneous-msc/
+- id: MSC54-CPP
+  name: 信号处理函数必须是普通函数
+  severity: high
+  category: cert-cpp
+  type: semantic
+  language: cpp
+  description: 带捕获的 lambda、成员函数等作为信号处理函数无法正确调用。
+  rationale: CERT C++ MSC54-CPP：见规范原文。
+  fix_suggestion: 用无捕获的普通函数或 static 函数作为 handler。
+  tags:
+  - MSC
+  - semantic
+  match:
+    prompt: 判断该信号处理函数是否是有捕获的 lambda、成员函数或带链接问题的函数。若存在，violation=true。
+    context:
+      candidate_regex: \bsignal\s*\(|\bsigaction\s*\(
+      limit: 8
+  references:
+  - https://cmu-sei.github.io/secure-coding-standards/sei-cert-cpp-coding-standard/rules/miscellaneous-msc/

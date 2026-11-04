@@ -1,0 +1,77 @@
+# CERT C — ERR 类别
+- id: ERR30-C
+  name: 读取 errno 要小心
+  severity: medium
+  category: cert-c
+  type: semantic
+  language: c
+  description: errno 只在调用失败后有意义，且可能被中间调用（printf 等）改写，未先置 0 就判断会误判。
+  rationale: CERT ERR30-C：errno 必须在调用前置 0、失败后立即读取。
+  fix_suggestion: 调用前 errno = 0，失败分支里立刻保存 errno。
+  tags:
+  - ERR
+  - semantic
+  match:
+    prompt: 判断该函数是否在库调用失败后依赖 errno，但没有在调用前置 0 或中间夹了可能改写 errno 的调用。若存在，violation=true。
+    context:
+      candidate_regex: errno
+      limit: 10
+  references:
+  - https://cmu-sei.github.io/secure-coding-standards/sei-cert-c-coding-standard/rules/error-handling-err/
+- id: ERR32-C
+  name: 不要依赖不确定的 errno 值
+  severity: medium
+  category: cert-c
+  type: regex
+  language: c
+  description: 在未失败的调用后读取 errno，其值可能残留自上一次失败，据此判断会走错分支。
+  rationale: CERT ERR32-C：errno 仅在调用明确失败时有意义。
+  fix_suggestion: 只用返回值判断成功与否，失败后再看 errno。
+  tags:
+  - ERR
+  - heuristic
+  match:
+    pattern: \berrno\s*==\s*(?:E[A-Z]+)
+    message: 直接以 errno 相等判断结果，未先确认调用失败
+    file_scope: &id001
+      language: c
+      path_glob: '*.c'
+  references:
+  - https://cmu-sei.github.io/secure-coding-standards/sei-cert-c-coding-standard/rules/error-handling-err/
+- id: ERR33-C
+  name: 检测并处理标准库错误
+  severity: high
+  category: cert-c
+  type: semantic
+  language: c
+  description: malloc/fopen/read/write/close 等返回值未检查，失败后被当作成功继续执行。
+  rationale: CERT ERR33-C：库函数返回值必须检查。
+  fix_suggestion: 逐个检查返回值并处理错误路径。
+  tags:
+  - ERR
+  - semantic
+  match:
+    prompt: 判断该函数是否调用了会失败且返回值有错误指示的库函数（malloc/fopen/read/write/close/fclose/snprintf）却未检查返回值。若存在，violation=true，message 指出未检查的调用。
+    context:
+      candidate_regex: \b(malloc|calloc|realloc|fopen|read|write|close|fclose|snprintf)\s*\(
+      limit: 10
+  references:
+  - https://cmu-sei.github.io/secure-coding-standards/sei-cert-c-coding-standard/rules/error-handling-err/
+- id: ERR34-C
+  name: 字符串转数字时必须检测错误
+  severity: high
+  category: cert-c
+  type: regex
+  language: c
+  description: atoi/atol/atof 无法报告转换失败，非法输入静默返回 0，干扰后续逻辑。
+  rationale: CERT ERR34-C：优先使用 strtol/strtod 并检查 errno 与 endptr。
+  fix_suggestion: 改用 strtol/strtoul/strtod，检查 endptr 是否指向字符串末尾。
+  tags:
+  - ERR
+  - heuristic
+  match:
+    pattern: \b(?:atoi|atol|atoll|atof)\s*\(
+    message: 使用 atoi/atof 等无法报告错误的转换函数
+    file_scope: *id001
+  references:
+  - https://cmu-sei.github.io/secure-coding-standards/sei-cert-c-coding-standard/rules/error-handling-err/

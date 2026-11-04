@@ -1,9 +1,73 @@
 id: cert-cpp
 builtin: true
 languages: [cpp]
-name: "CERT C++ Rule Pack (scaffold)"
-version: "0.1.0"
+name: "CERT C++ 安全编码标准（全集）"
+version: "1.0.0"
 description: >-
-  CERT C++ 编码标准的小型示例包（脚手架）。演示多标准支持。可在此基础上扩展更多规则。
-reference: "https://wiki.sei.cmu.edu/confluence/display/cplusplus/SEI+CERT+C%2B%2B+Coding+Standard"
-coverage_note: "本包为脚手架，仅含少量代表性规则；完整覆盖需随标准持续补充。"
+  SEI CERT C++ 编码标准官方在线版列出的 83 条规则全部收录，按 CON / CTR / DCL / ERR / EXP / FIO / INT / MEM /
+  MSC / OOP / STR 11 个类别组织。静态可判定的用正则 / tree-sitter 实现，需要语义判断的交给本地模型。
+reference: "https://cmu-sei.github.io/secure-coding-standards/sei-cert-cpp-coding-standard/"
+coverage_note: >-
+  收录官方在线版全部 83 条 CERT C++ 规则。其中约 15 条可完全静态判定，其余需要语义判断、由本地模型执行。
+  建议日常先跑「核心高危」或「纯静态」子集。
+default_subsets: [core]
+subsets:
+  - id: all
+    name: "全集（83 条）"
+    description: "全部规则，含需本地模型的语义规则。"
+  - id: core
+    name: "核心高危（推荐）"
+    description: "可直接定位的高危规则，日常提交前跑。"
+    rules:
+      - DCL58-CPP
+      - DCL59-CPP
+      - ERR52-CPP
+      - ERR61-CPP
+      - ERR62-CPP
+      - EXP50-CPP
+      - EXP52-CPP
+      - EXP61-CPP
+      - MSC50-CPP
+      - STR50-CPP
+      - OOP52-CPP
+      - MEM50-CPP
+      - MEM51-CPP
+      - MEM56-CPP
+      - CTR50-CPP
+  - id: static
+    name: "纯静态（不依赖模型）"
+    description: "无需本地模型即可判定，离线可用、结果可复现。"
+    tags: [auto, heuristic]
+  - id: con
+    name: "并发 (CON)"
+    tags: [CON]
+  - id: ctr
+    name: "容器 (CTR)"
+    tags: [CTR]
+  - id: dcl
+    name: "声明 (DCL)"
+    tags: [DCL]
+  - id: err
+    name: "错误处理 (ERR)"
+    tags: [ERR]
+  - id: exp
+    name: "表达式 (EXP)"
+    tags: [EXP]
+  - id: fio
+    name: "输入输出 (FIO)"
+    tags: [FIO]
+  - id: int
+    name: "整数 (INT)"
+    tags: [INT]
+  - id: mem
+    name: "内存 (MEM)"
+    tags: [MEM]
+  - id: msc
+    name: "杂项 (MSC)"
+    tags: [MSC]
+  - id: oop
+    name: "面向对象 (OOP)"
+    tags: [OOP]
+  - id: str
+    name: "字符串 (STR)"
+    tags: [STR]

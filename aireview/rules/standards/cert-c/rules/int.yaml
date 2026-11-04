@@ -1,0 +1,134 @@
+# CERT C — INT 类别
+- id: INT30-C
+  name: 确保无符号整数运算不会回绕
+  severity: high
+  category: cert-c
+  type: semantic
+  language: c
+  description: 无符号运算按模回绕，减法/乘法尤其容易得到巨大值，随后被用作长度或下标时变成溢出。
+  rationale: CERT INT30-C：无符号回绕虽良定义，但常导致逻辑与安全问题。
+  fix_suggestion: 运算前用边界检查（如 if (a > UINT_MAX - b)）或改用更宽类型。
+  tags:
+  - INT
+  - semantic
+  match:
+    prompt: 判断该函数对无符号整数做加减乘时是否可能回绕且结果被用于长度、下标、分配大小。若存在，violation=true，message 指出表达式。
+    context:
+      candidate_regex: '[-+*]=|\b(size_t|unsigned)\b'
+      limit: 10
+  references:
+  - https://cmu-sei.github.io/secure-coding-standards/sei-cert-c-coding-standard/rules/integers-int/
+- id: INT31-C
+  name: 确保整数转换不丢失或 misinterpreted 数据
+  severity: high
+  category: cert-c
+  type: semantic
+  language: c
+  description: 把宽类型赋给窄类型、把有符号赋给无符号，可能截断或变成巨大值。
+  rationale: CERT INT31-C：整数转换可能丢失数据。
+  fix_suggestion: 转换前检查取值范围，或使用显式宽度类型与安全转换函数。
+  tags:
+  - INT
+  - semantic
+  match:
+    prompt: 判断该函数是否存在窄化整数转换（long→int、int→short/char、有符号↔无符号）而未检查范围，且结果被用于长度/下标/比较。若存在，violation=true。
+    context:
+      candidate_regex: \(\s*(?:char|short|int|unsigned|size_t)\s*\)|=\s*\w+\s*;
+      limit: 10
+  references:
+  - https://cmu-sei.github.io/secure-coding-standards/sei-cert-c-coding-standard/rules/integers-int/
+- id: INT32-C
+  name: 确保有符号整数运算不会溢出
+  severity: high
+  category: cert-c
+  type: semantic
+  language: c
+  description: 有符号溢出是未定义行为，优化器可能删除溢出检查，导致安全判断失效。
+  rationale: CERT INT32-C：有符号整数溢出属于未定义行为。
+  fix_suggestion: 运算前检查边界，或改用无符号/更宽类型并在检查后转换。
+  tags:
+  - INT
+  - semantic
+  match:
+    prompt: 判断该函数对有符号整数做加减乘时是否可能溢出且结果影响控制流、长度或下标。若存在，violation=true，message 指出表达式。
+    context:
+      candidate_regex: '[-+*]=|\bint\b'
+      limit: 10
+  references:
+  - https://cmu-sei.github.io/secure-coding-standards/sei-cert-c-coding-standard/rules/integers-int/
+- id: INT33-C
+  name: 确保除法与取余不会除以零
+  severity: high
+  category: cert-c
+  type: regex
+  language: c
+  description: 除数为 0（含取余）是未定义行为，字面量 0 尤其明显。
+  rationale: CERT INT33-C：除零属于未定义行为。
+  fix_suggestion: 除法前判断除数非零；取余同理。
+  tags:
+  - INT
+  - auto
+  match:
+    pattern: '[/%]\s*0(?![xX0-9.])'
+    message: 除数为字面量 0，运行时属于未定义行为
+    file_scope: &id001
+      language: c
+      path_glob: '*.c'
+  references:
+  - https://cmu-sei.github.io/secure-coding-standards/sei-cert-c-coding-standard/rules/integers-int/
+- id: INT34-C
+  name: 不要用负数或超过位宽的值做移位
+  severity: high
+  category: cert-c
+  type: regex
+  language: c
+  description: 移位数小于 0、或大于等于操作数位宽，都是未定义行为；字面量可静态判定。
+  rationale: CERT INT34-C：非法移位属于未定义行为。
+  fix_suggestion: 移位前对位数做范围检查，避免用用户输入直接做移位数。
+  tags:
+  - INT
+  - heuristic
+  match:
+    pattern: (?:<<|>>)\s*(?:-\s*\d+|\d{2,})
+    message: 移位位数为负数或可能超过操作数位宽 {{match}}
+    file_scope: *id001
+  references:
+  - https://cmu-sei.github.io/secure-coding-standards/sei-cert-c-coding-standard/rules/integers-int/
+- id: INT35-C
+  name: 使用正确的整数位宽
+  severity: medium
+  category: cert-c
+  type: semantic
+  language: c
+  description: 假设某类型是固定位宽（如认为 int 一定 32 位、long 一定 64 位）会跨平台出错。
+  rationale: CERT INT35-C：基础类型宽度由实现决定。
+  fix_suggestion: 需要精确宽度时使用 stdint.h 的 int32_t/uint64_t。
+  tags:
+  - INT
+  - semantic
+  match:
+    prompt: 判断该函数是否假设了 int/long/short 的具体位宽（如位移 31/32、掩码 0xFFFFFFFF、按字节数硬编码 4/8）。若存在，violation=true。
+    context:
+      candidate_regex: <<|>>|0x[0-9A-Fa-f]{8,}
+      limit: 10
+  references:
+  - https://cmu-sei.github.io/secure-coding-standards/sei-cert-c-coding-standard/rules/integers-int/
+- id: INT36-C
+  name: 指针与整数互转必须安全
+  severity: medium
+  category: cert-c
+  type: semantic
+  language: c
+  description: 指针转成放不下的整数类型（或反向）会截断，是未定义/实现定义行为。
+  rationale: CERT INT36-C：指针与整数互转需要足够宽的整型。
+  fix_suggestion: 使用 intptr_t/uintptr_t 承载指针值。
+  tags:
+  - INT
+  - semantic
+  match:
+    prompt: 判断该函数是否把指针转换为 int/long/unsigned 等可能不足宽的整型，或把整数转换为指针。若存在，violation=true，message 指出位置。
+    context:
+      candidate_regex: \(\s*(?:int|long|unsigned|size_t|uintptr_t|intptr_t)\s*\)
+      limit: 10
+  references:
+  - https://cmu-sei.github.io/secure-coding-standards/sei-cert-c-coding-standard/rules/integers-int/
