@@ -41,7 +41,7 @@ def render_text(report: dict) -> str:
     s = report["summary"]
     lines = []
     lines.append("=" * 72)
-    lines.append(" GStack 本地代码审查报告")
+    lines.append(" aiReview 本地代码审查报告")
     lines.append("=" * 72)
     m = report["metadata"]
     lines.append(f" 项目     : {m.get('project', '-')}")
@@ -106,7 +106,7 @@ def render_sarif(report: dict) -> str:
         "$schema": "https://json.schemastore.org/sarif-2.1.0.json",
         "version": "2.1.0",
         "runs": [{
-            "tool": {"driver": {"name": "GStack Code Review", "version": "0.1.0",
+            "tool": {"driver": {"name": "aiReview Code Review", "version": "0.1.0",
                                 "rules": sarif_rules}},
             "results": results,
         }],

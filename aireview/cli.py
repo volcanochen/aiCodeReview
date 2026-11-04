@@ -1,11 +1,11 @@
-"""GStack code review CLI.
+"""aiReview code review CLI.
 
 Subcommands:
   review        Run the rule-based review over a path.
   rule add      Compile a natural-language rule via the local LLM (or emit a template).
   rule list     List all loaded rules.
   standard list List installed standard packs.
-  config init   Write an example .gstack.yaml.
+  config init   Write an example .aireview.yaml.
   models        Probe the local LLM endpoint.
 """
 from __future__ import annotations
@@ -160,7 +160,7 @@ def cmd_standard_list(args, cfg):
 
 
 def cmd_config_init(args, cfg):
-    path = args.output or ".gstack.yaml"
+    path = args.output or ".aireview.yaml"
     with open(path, "w", encoding="utf-8") as fh:
         fh.write(example_config_text())
     print(f"[ok] 已生成示例配置: {path}")
@@ -197,7 +197,7 @@ def build_parser() -> argparse.ArgumentParser:
     common.add_argument("--only-structured", action="store_true", help="跳过语义(LLM)规则")
     common.add_argument("--config", default=None, help="配置文件路径")
 
-    p = argparse.ArgumentParser(prog="gstack", parents=[common], description="本地 AI 代码审查系统")
+    p = argparse.ArgumentParser(prog="aireview", parents=[common], description="本地 AI 代码审查系统")
     sub = p.add_subparsers(dest="cmd", required=True)
 
     pr = sub.add_parser("review", parents=[common], help="运行规则审查")
@@ -225,7 +225,7 @@ def build_parser() -> argparse.ArgumentParser:
     ci = sub.add_parser("config", parents=[common], help="配置")
     ci_sub = ci.add_subparsers(dest="cfg_cmd", required=True)
     ci_init = ci_sub.add_parser("init", parents=[common], help="生成示例配置")
-    ci_init.add_argument("--output", default=".gstack.yaml")
+    ci_init.add_argument("--output", default=".aireview.yaml")
     ci_init.set_defaults(func=cmd_config_init)
 
     md = sub.add_parser("models", parents=[common], help="探测本地模型端点")

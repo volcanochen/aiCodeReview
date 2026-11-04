@@ -1,4 +1,4 @@
-# GStack 本地 AI 代码审查系统
+# aiReview 本地 AI 代码审查系统
 
 一个**全程本地、规则驱动、可理解多模块逻辑**的静态代码审查系统。所有模型推理都发生在你本机，无任何云端依赖。
 
@@ -17,11 +17,11 @@
 
 | 需求 | 实现 |
 |------|------|
-| 1. 本地 AI 模型 | `gstack_review/llm/`：统一客户端抽象，默认对接 **LM Studio**（OpenAI 兼容 `/v1/chat/completions`），同样支持 Ollama / llama.cpp / vLLM，带健康探测与 fallback。 |
-| 2. 大项目 / 多模块 / 理解模块间逻辑 | `gstack_review/parser/`：tree-sitter 解析 C/C++ → 符号表 + **调用图 + 依赖图**，落盘 SQLite（hash 增量）。图查询支撑跨文件/跨模块分析（如信号处理函数调用链展开）。 |
-| 3. 自然语言自定义规则 | `gstack_review/rules/nl_compiler.py`：本地 LLM 把一句中文/英文描述编译成结构化规则（`ast_pattern` / `regex` / `graph` / `semantic`），带 schema 校验与低置信人审闸口。 |
-| 4. 规则驱动检查 + 规则维度报告 | `gstack_review/rules/engine.py` + `gstack_review/reporter/`：逐规则匹配，命中即报；报告按规则维度聚合，支持 文本 / JSON / SARIF，严重级门禁退出码。 |
-| 5. 内置检测标准 | `gstack_review/rules/standards/`：内置 **CERT C**（可自动化高价值子集，含 AST/正则/跨模块图/语义四类规则）、**CERT C++** 脚手架包、**Python**、**JavaScript / TypeScript** 通用反模式与安全隐患包（正则类型），以及 **logic（业务逻辑一致性 / 跨模块矛盾）** 分析包（基于本地大模型，先推导各模块业务逻辑与不变量，再从调用图逐对回归检测矛盾）。所有包可裁剪/扩展/卸载，也可在 Web 界面安装自定义包。 |
+| 1. 本地 AI 模型 | `aireview/llm/`：统一客户端抽象，默认对接 **LM Studio**（OpenAI 兼容 `/v1/chat/completions`），同样支持 Ollama / llama.cpp / vLLM，带健康探测与 fallback。 |
+| 2. 大项目 / 多模块 / 理解模块间逻辑 | `aireview/parser/`：tree-sitter 解析 C/C++ → 符号表 + **调用图 + 依赖图**，落盘 SQLite（hash 增量）。图查询支撑跨文件/跨模块分析（如信号处理函数调用链展开）。 |
+| 3. 自然语言自定义规则 | `aireview/rules/nl_compiler.py`：本地 LLM 把一句中文/英文描述编译成结构化规则（`ast_pattern` / `regex` / `graph` / `semantic`），带 schema 校验与低置信人审闸口。 |
+| 4. 规则驱动检查 + 规则维度报告 | `aireview/rules/engine.py` + `aireview/reporter/`：逐规则匹配，命中即报；报告按规则维度聚合，支持 文本 / JSON / SARIF，严重级门禁退出码。 |
+| 5. 内置检测标准 | `aireview/rules/standards/`：内置 **CERT C**（可自动化高价值子集，含 AST/正则/跨模块图/语义四类规则）、**CERT C++** 脚手架包、**Python**、**JavaScript / TypeScript** 通用反模式与安全隐患包（正则类型），以及 **logic（业务逻辑一致性 / 跨模块矛盾）** 分析包（基于本地大模型，先推导各模块业务逻辑与不变量，再从调用图逐对回归检测矛盾）。所有包可裁剪/扩展/卸载，也可在 Web 界面安装自定义包。 |
 
 ## 安装
 
@@ -36,7 +36,7 @@ pip install tree-sitter tree-sitter-c tree-sitter-cpp
 ## 目录结构
 
 ```
-gstack_review/
+aireview/
 ├── cli.py                 # 命令行入口（review / rule / standard / config / models / web）
 ├── config.py              # 配置模型与示例配置
 ├── llm/                   # OpenAI 兼容本地模型客户端（健康探测 / JSON 自适应）
@@ -64,24 +64,24 @@ requirements.txt
 
 ```bash
 # 1) 生成示例配置（默认已按 LM Studio 填好；换 Ollama 见注释）
-python -m gstack_review.cli config init --output .gstack.yaml
+python -m aireview.cli config init --output .aireview.yaml
 
 # 2) 确认端点与可用模型
-python -m gstack_review.cli models
+python -m aireview.cli models
 
 # 3) 运行审查（结构化规则纯离线；语义/自然语言规则会调用本地模型）
-python -m gstack_review.cli review --path ./your_project --format text
-python -m gstack_review.cli review --path ./your_project --format sarif --report report.sarif.json
+python -m aireview.cli review --path ./your_project --format text
+python -m aireview.cli review --path ./your_project --format sarif --report report.sarif.json
 
 # 4) 用自然语言新增规则（调用本地模型编译为结构化规则）
-python -m gstack_review.cli rule add "禁止在循环里调用 malloc" --model qwen/qwen2.5-coder-14b
+python -m aireview.cli rule add "禁止在循环里调用 malloc" --model qwen/qwen2.5-coder-14b
 
 # 5) 查看内置标准包与规则
-python -m gstack_review.cli standard list
-python -m gstack_review.cli rule list
+python -m aireview.cli standard list
+python -m aireview.cli rule list
 
 # 6) 跳过需模型的语义规则（纯静态离线）
-python -m gstack_review.cli review --path ./your_project --only-structured
+python -m aireview.cli review --path ./your_project --only-structured
 ```
 
 > 若 LM Studio 的模型 id 含 `/`（如 `qwen/qwen2.5-coder-14b`），`--model` 直接传该完整 id 即可。
@@ -93,9 +93,9 @@ python -m gstack_review.cli review --path ./your_project --only-structured
 
 ```bash
 # 启动（默认 127.0.0.1:8765，--root 为待审查项目/配置所在根目录）
-python -m gstack_review.cli web --root .
+python -m aireview.cli web --root .
 # 或等价地：
-python -m gstack_review.web --root . --port 8765
+python -m aireview.web --root . --port 8765
 
 # 浏览器打开：http://127.0.0.1:8765/
 ```
@@ -107,7 +107,7 @@ python -m gstack_review.web --root . --port 8765
 - **规则管理**：用自然语言描述规则 → 调用本地模型编译 → YAML 预览 → 保存为用户规则；内置/用户规则列表、启用开关、删除；离线时降级为可编辑模板。
 - **运行与结果**：选择本地目录（内置目录浏览器）、选格式与标准包、运行审查；长任务轮询进度；结果含门禁横幅、严重度卡片、按严重度分组可展开的发现项（代码片段 + 修复建议 + 置信度）、跳过规则提示，以及 JSON / SARIF / Text 下载。
 
-> 界面与命令行共用同一份 `.gstack.yaml` 与用户规则目录，二者配置互通。
+> 界面与命令行共用同一份 `.aireview.yaml` 与用户规则目录，二者配置互通。
 
 ## 规则 Schema（自定义 / 标准包通用）
 
@@ -139,14 +139,14 @@ match:
 ## 扩展
 
 - **新增语言**：装对应 `tree-sitter-<lang>`，在 `parser/tslang.py` 注册解析器与符号抽取。
-- **新增标准包（文件方式）**：在 `gstack_review/rules/standards/<pack_id>/` 下放 `manifest.yaml` + `rules/*.yaml`，即被 `standard list` / `review --standard` 识别。
+- **新增标准包（文件方式）**：在 `aireview/rules/standards/<pack_id>/` 下放 `manifest.yaml` + `rules/*.yaml`，即被 `standard list` / `review --standard` 识别。
 - **新增规则类型**：在 `rules/engine.py` 实现新的 Matcher，并在 schema 的 `type` 枚举里注册。
 
 ### 安装 / 卸载标准包
 
 除文件方式外，Web 界面「标准包」标签页提供「安装新标准包」卡片：粘贴一段 YAML（顶层含 `id` / `manifest` / `rules`）即可安装；非内置包支持一键卸载（删除其规则文件并从 `enabled_standards` 移除）。
 
-打包格式（与 `gstack_review/rules/standards/<pack_id>/` 目录结构等价）：
+打包格式（与 `aireview/rules/standards/<pack_id>/` 目录结构等价）：
 
 ```yaml
 id: my-corp           # 包 id，仅允许字母/数字/_/./-，内置 id（cert-c/cert-cpp/python/javascript）不可覆盖
@@ -177,7 +177,7 @@ rules:
 除"语法/结构类"检查外，系统支持**只看业务逻辑**的模式：
 
 - **Web**：运行页勾选「仅业务逻辑（跳过语法/正则规则）」。
-- **CLI**：`python -m gstack_review.cli review --path ./proj --logic-only`。
+- **CLI**：`python -m aireview.cli review --path ./proj --logic-only`。
 - 该模式只保留 `type ∈ {graph, semantic}` 的规则，丢弃 `regex` / `ast_pattern`（语法/文本类）。
 
 内置 `logic` 标准包提供 `logic-consistency` 规则（`graph` 类型，`analyzer=logic_consistency`），采用两趟流程：
@@ -193,13 +193,13 @@ rules:
 
 ```bash
 # C 示例（CERT / 信号安全 / 跨模块调用链）
-python -m gstack_review.cli review --path sample_project --format text
+python -m aireview.cli review --path sample_project --format text
 
 # Python / JavaScript 示例（Python/JS 反模式与安全隐患规则）
-python -m gstack_review.cli review --path sample_pyjs --standard python --standard javascript --format text
+python -m aireview.cli review --path sample_pyjs --standard python --standard javascript --format text
 
 # 仅业务逻辑（跨模块矛盾回归，需本地模型在线）
-python -m gstack_review.cli review --path sample_project --standard logic --logic-only --format text
+python -m aireview.cli review --path sample_project --standard logic --logic-only --format text
 ```
 
 ## 测试

@@ -1,5 +1,5 @@
-# GStack local review — generated runtime data
-.gstack/
+# aiReview local review — generated runtime data
+.aireview/
 __pycache__/
 *.pyc
-*.gstack_test.yaml
+*.aireview_test.yaml

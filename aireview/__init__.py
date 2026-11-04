@@ -1,4 +1,4 @@
-"""GStack Local AI Code Review System.
+"""aiReview Local AI Code Review System.
 
 A local, rule-driven, multi-module code review system backed by a local LLM
 (Ollama / llama.cpp / vLLM — any OpenAI-compatible /v1/chat/completions endpoint).

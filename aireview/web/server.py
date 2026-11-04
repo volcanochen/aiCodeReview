@@ -1,13 +1,13 @@
-"""Local web UI server for GStack code review.
+"""Local web UI server for aiReview code review.
 
 A dependency-free HTTP server (stdlib ``http.server`` + ``ThreadingHTTPServer``)
-that wraps the existing ``gstack_review`` engine and exposes a JSON API plus a
+that wraps the existing ``aireview`` engine and exposes a JSON API plus a
 single-page static frontend (``static/index.html``). Runs entirely on localhost.
 
 Run:
-    python -m gstack_review.web [--host 127.0.0.1] [--port 8765] [--root DIR] [--config PATH]
+    python -m aireview.web [--host 127.0.0.1] [--port 8765] [--root DIR] [--config PATH]
 or via the CLI:
-    python -m gstack_review.cli web
+    python -m aireview.cli web
 """
 from __future__ import annotations
 
@@ -57,7 +57,7 @@ class WebServer:
         self.port = port
         self.root = os.path.abspath(root or os.getcwd())
         self.config_path = (os.path.abspath(config_path)
-                            if config_path else os.path.join(self.root, ".gstack.yaml"))
+                            if config_path else os.path.join(self.root, ".aireview.yaml"))
         self.jobs: dict[str, dict] = {}
         self.jobs_lock = threading.Lock()
         self.httpd: ThreadingHTTPServer | None = None
@@ -229,14 +229,14 @@ class WebServer:
     def run(self):
         self.httpd = ThreadingHTTPServer((self.host, self.port), self.make_handler())
         url = f"http://{self.host}:{self.port}/"
-        print(f"[gstack-web] 服务已启动: {url}")
-        print(f"[gstack-web] 工作根目录: {self.root}")
-        print(f"[gstack-web] 配置文件:   {self.config_path}")
-        print("[gstack-web] 按 Ctrl+C 停止。")
+        print(f"[aireview-web] 服务已启动: {url}")
+        print(f"[aireview-web] 工作根目录: {self.root}")
+        print(f"[aireview-web] 配置文件:   {self.config_path}")
+        print("[aireview-web] 按 Ctrl+C 停止。")
         try:
             self.httpd.serve_forever()
         except KeyboardInterrupt:
-            print("\n[gstack-web] 已停止。")
+            print("\n[aireview-web] 已停止。")
 
     # ================================================================== API impl
     def api_config_get(self) -> dict:
@@ -622,7 +622,7 @@ class WebServer:
         if content is None:
             handler._json(400, {"error": f"不支持的格式: {fmt}"})
             return
-        fname = f"gstack-report.{fmt}"
+        fname = f"aireview-report.{fmt}"
         body = content.encode("utf-8")
         handler.send_response(200)
         handler.send_header("Content-Type", "application/octet-stream; charset=utf-8")
@@ -668,11 +668,11 @@ class WebServer:
 
 def main(argv=None):
     import argparse
-    ap = argparse.ArgumentParser(prog="gstack-web", description="GStack 本地代码审查 Web 界面")
+    ap = argparse.ArgumentParser(prog="aireview-web", description="aiReview 本地代码审查 Web 界面")
     ap.add_argument("--host", default="127.0.0.1")
     ap.add_argument("--port", type=int, default=8765)
     ap.add_argument("--root", default=None, help="工作根目录（配置与待审查项目所在处）")
-    ap.add_argument("--config", default=None, help="配置文件路径（默认 <root>/.gstack.yaml）")
+    ap.add_argument("--config", default=None, help="配置文件路径（默认 <root>/.aireview.yaml）")
     args = ap.parse_args(argv)
     WebServer(args.host, args.port, args.root, args.config).run()
 

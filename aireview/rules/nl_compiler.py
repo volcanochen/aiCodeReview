@@ -106,7 +106,7 @@ def compile_nl(text: str, llm, *, category: str = "nl-custom", fallback_id: str 
 
 
 def _template(text: str, rid: str, category: str) -> str:
-    return f"""# 规则模板（本地模型不可用，请手工补全 match 后保存到 .gstack/rules/<id>.yaml）
+    return f"""# 规则模板（本地模型不可用，请手工补全 match 后保存到 .aireview/rules/<id>.yaml）
 id: {rid}
 name: "{text[:40]}"
 severity: medium

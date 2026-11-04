@@ -1,4 +1,4 @@
-"""Integration tests for GStack local code review.
+"""Integration tests for aiReview local code review.
 
 Covers (without requiring a real local model):
   - index build + cross-module call graph
@@ -15,10 +15,10 @@ import tempfile
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from gstack_review.parser.index import Index
-from gstack_review.rules.engine import RuleEngine
-from gstack_review.rules.nl_compiler import compile_nl
-from gstack_review.rules import validate_rule
+from aireview.parser.index import Index
+from aireview.rules.engine import RuleEngine
+from aireview.rules.nl_compiler import compile_nl
+from aireview.rules import validate_rule
 
 
 class FakeLLM:
@@ -57,8 +57,8 @@ def test_review_smoke():
     assert "process" in idx.callees_of("handler"), idx.callees_of("handler")
     eng = RuleEngine(idx, None)
     # load CERT C pack rules
-    from gstack_review.rules import load_pack_by_id
-    rules, _ = load_pack_by_id("cert-c", os.path.join(here, "gstack_review", "rules", "standards"))
+    from aireview.rules import load_pack_by_id
+    rules, _ = load_pack_by_id("cert-c", os.path.join(here, "aireview", "rules", "standards"))
     res = eng.run(rules)
     ids = {f["rule_id"] for f in res["findings"]}
     assert "cert-c-fio34" in ids, "gets() should be detected"

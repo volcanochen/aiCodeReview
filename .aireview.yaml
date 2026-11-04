@@ -1,4 +1,4 @@
-user_rules_dir: .gstack/rules
+user_rules_dir: .aireview/rules
 model: qwen/qwen2.5-coder-14b
 enabled_standards:
 - cert-c
@@ -6,7 +6,7 @@ enabled_standards:
 - python
 - logic
 only_structured: false
-index_db: .gstack/index.db
+index_db: .aireview/index.db
 semantic_timeout_ms: 30000
 languages:
 - c
